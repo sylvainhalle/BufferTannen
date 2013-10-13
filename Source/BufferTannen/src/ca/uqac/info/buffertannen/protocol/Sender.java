@@ -135,7 +135,7 @@ public class Sender
    * Adds a schema message to the sender's segment buffer
    * @param number The schema to send
    */
-  public void addSchemaMessage(int number)
+  protected void addSchemaMessage(int number)
   {
     if (!m_schemas.containsKey(number))
     {

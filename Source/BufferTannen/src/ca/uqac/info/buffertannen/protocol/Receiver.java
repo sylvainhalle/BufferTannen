@@ -37,7 +37,7 @@ public class Receiver
   /**
    * A circular buffer of segments received
    */
-  protected Segment[] m_receivedSegments;
+  protected LinkedList<Segment> m_receivedSegments;
   
   /**
    * A list that will contain the received messages,
@@ -46,14 +46,23 @@ public class Receiver
   protected LinkedList<SchemaElement> m_receivedMessages;
   
   /**
-   * Left bound of circular buffer
+   * Expected sequence number of next segment
    */
-  protected int m_bufferBegin = 0;
+  protected int m_expectedSequenceNumber = 0;
   
   /**
-   * Right bound of circular buffer
+   * Number of messages lost since the beginning of the communication
    */
-  protected int m_bufferEnd = 0;
+  protected int m_messagesLost = 0;
+  
+  /**
+   * Maximum difference between expected sequence number and
+   * highest sequence number received. Suppose for example this
+   * value is set to 10 and the receiver awaits segment n.
+   * If segment n+k (k &geq; 10) is received, segment n is declared lost and
+   * the expected segment number is incremented to n + k-10.
+   */
+  protected int m_lostInterval = 10;
   
   /**
    * The bank of schemas to interpret the messages
@@ -64,7 +73,7 @@ public class Receiver
   {
     super();
     m_schemas = new HashMap<Integer,SchemaElement>();
-    m_receivedSegments = new Segment[Segment.MAX_SEQUENCE];
+    m_receivedSegments = new LinkedList<Segment>();
     m_receivedMessages = new LinkedList<SchemaElement>();
   }
   
@@ -82,7 +91,7 @@ public class Receiver
     putFrame(f);
   }
   
-  public void putFrame(Frame f)
+  protected void putFrame(Frame f)
   {
     for (Segment seg : f)
     {
@@ -95,24 +104,27 @@ public class Receiver
       }
       else if (seg instanceof MessageSegment)
       {
-        int seq_no = seg.getSequenceNumber();
-        m_receivedSegments[seq_no] = seg;
-        m_bufferEnd = Math.max(seq_no + 1, m_bufferEnd);        
+        insertSegment(seg);       
       }
     }
-    int steps = 0;
-    int max_steps = m_bufferEnd - m_bufferBegin;
-    if (m_bufferEnd < m_bufferBegin)
+    // Compute difference between highest and lowest sequence number
+    Segment max_seg = m_receivedSegments.peekLast();
+    int force_send = max_seg.getSequenceNumber() - m_lostInterval;
+    while (!m_receivedSegments.isEmpty())
     {
-      max_steps = Segment.MAX_SEQUENCE - (m_bufferBegin - m_bufferEnd);
-    }
-    for (int i = m_bufferBegin; steps < max_steps; i = (i + 1) % Segment.MAX_SEQUENCE)
-    {
-      steps++;
-      Segment seg = m_receivedSegments[i];
+      Segment seg = m_receivedSegments.peekFirst();
       if (seg == null)
       {
         break;
+      }
+      int seq_no = seg.getSequenceNumber();
+      if (seq_no != m_expectedSequenceNumber)
+      {
+        if (seq_no >= force_send)
+        {
+          // We are no forced to handle this segment right away
+          break;
+        }
       }
       // We can process message segments only if we have the schema to
       // decode them
@@ -121,6 +133,16 @@ public class Receiver
       if (!m_schemas.containsKey(s_number))
       {
         // We don't have it: cannot process any further segment
+        if (seq_no < force_send)
+        {
+          // We are forced to handle this segment
+          // Since we can't decode it, we discard it and increment
+          // the count of lost segments
+          m_receivedSegments.removeFirst();
+          m_messagesLost += (seq_no - m_expectedSequenceNumber);
+          m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
+          continue;
+        }
         break;
       }
       SchemaElement se = m_schemas.get(s_number).copy();
@@ -132,13 +154,61 @@ public class Receiver
       catch (ReadException re)
       {
         // We failed to decode the message: perhaps the schema is outdated
-        // Wait until next time
+        if (seq_no < force_send)
+        {
+          // We are forced to handle this segment
+          // Since we can't decode it, we discard it and increment
+          // the count of lost segments
+          m_receivedSegments.removeFirst();
+          m_messagesLost += (seq_no - m_expectedSequenceNumber);
+          m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
+          continue;
+        }
+        // Otherwise, we can wait until next time
         break;
       }
       // We decoded the message successfully
       m_receivedMessages.add(se);
-      m_receivedSegments[i] = null;
-      m_bufferBegin = (m_bufferBegin + 1) % Segment.MAX_SEQUENCE;        
+      m_expectedSequenceNumber = (m_expectedSequenceNumber + 1) % Segment.MAX_SEQUENCE;
+      m_receivedSegments.removeFirst();        
+    }
+  }
+  
+  /**
+   * Inserts the segment at its proper location in the buffer, based
+   * on its sequential number. Since the sequential number goes back to
+   * 0 after reaching its maximum value, special care must be taken to
+   * 
+   * @param seg The segment to insert
+   */
+  protected void insertSegment(Segment seg)
+  {
+    int seq_no = seg.getSequenceNumber();
+    int i = 0;
+    if (m_receivedSegments.isEmpty())
+    {
+      m_receivedSegments.add(seg);
+      return;
+    }
+    int first_seg_pos = m_receivedSegments.peekFirst().getSequenceNumber();
+    int last_seg_pos = m_receivedSegments.peekLast().getSequenceNumber();
+    if (seq_no < first_seg_pos && )
+    int distance_to_left = (first_seg.getSequenceNumber() - seq_no);
+    int distance_to_right = (seq_no - last_seg.getSequenceNumber());
+    if (first_seg.getSequenceNumber() > seq_no)
+    {
+      m_receivedSegments.addFirst(seg);
+      return;
+    }
+    for (Segment cur_seg : m_receivedSegments)
+    {
+      i++;
+      int cur_no = cur_seg.getSequenceNumber();
+      if (cur_no < seq_no)
+      {
+        m_receivedSegments.add(i, seg);
+        break;
+      }
     }
   }
   
