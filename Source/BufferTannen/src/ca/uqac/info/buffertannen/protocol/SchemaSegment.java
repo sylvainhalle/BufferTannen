@@ -143,5 +143,15 @@ public class SchemaSegment extends Segment
     m_schema = ei.m_element;
     return bits_read;
   }
+  
+  @Override
+  public String toString()
+  {
+    StringBuilder out = new StringBuilder();
+    out.append("Segment type: schema definition\n");
+    out.append("Schema number: ").append(m_schemaNumber).append("\n");
+    out.append(m_schema.schemaToString()).append("\n");
+    return out.toString();
+  }
 
 }

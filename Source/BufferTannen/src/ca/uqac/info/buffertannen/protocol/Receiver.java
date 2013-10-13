@@ -90,7 +90,6 @@ public class Receiver
       {
         // Process schemas right away
         SchemaElement se = ((SchemaSegment) seg).getSchema();
-        System.out.println(se.schemaToString());
         int s_number = ((SchemaSegment) seg).getSchemaNumber();
         m_schemas.put(s_number, se);
       }

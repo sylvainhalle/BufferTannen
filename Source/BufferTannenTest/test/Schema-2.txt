@@ -1,0 +1,8 @@
+FixedMap {
+  "key1" : Smallscii,
+  "key2" : FixedMap {
+    "subkey1" : Integer(3),
+    "subkey2" : Smallscii
+  },
+  "key3" : Integer(4)
+}

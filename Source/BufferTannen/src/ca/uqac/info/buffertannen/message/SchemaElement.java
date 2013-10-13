@@ -17,24 +17,26 @@
  -------------------------------------------------------------------------*/
 package ca.uqac.info.buffertannen.message;
 
+import ca.uqac.info.util.MutableString;
+
 public abstract class SchemaElement
 {
   
   /**
    * Integer values representing each type of element
    */
-  public static final int SCHEMA_OTHER = 0;
-  public static final int SCHEMA_ENUM = 1;
-  public static final int SCHEMA_SMALLSCII = 2;
-  public static final int SCHEMA_LIST = 3;
-  public static final int SCHEMA_MAP = 4;
-  public static final int SCHEMA_STRING = 5;
-  public static final int SCHEMA_INTEGER = 6;
+  protected static final int SCHEMA_OTHER = 0;
+  protected static final int SCHEMA_ENUM = 1;
+  protected static final int SCHEMA_SMALLSCII = 2;
+  protected static final int SCHEMA_LIST = 3;
+  protected static final int SCHEMA_MAP = 4;
+  protected static final int SCHEMA_STRING = 5;
+  protected static final int SCHEMA_INTEGER = 6;
   
   /**
    * Number of bits used to encode schema element type
    */
-  public static final int SCHEMA_WIDTH = 3;
+  protected static final int SCHEMA_WIDTH = 3;
   
   /**
    * Writes the element's content as a sequence of bits
@@ -131,11 +133,98 @@ public abstract class SchemaElement
     return ei;
   }
   
+  /**
+   * Parses the definition of a schema from a character string 
+   * @param s The string to read from
+   * @return The schema instance produced from the string
+   * @throws ReadException If the string does not conform to the
+   *   expected syntax
+   */
+  public static SchemaElement parseSchemaFromString(String s) throws ReadException
+  {
+    MutableString ms = new MutableString(s);
+    return parseSchemaFromString(ms);
+  }
+  
+  /**
+   * Parses the definition of a schema from a character string 
+   * @param s The string to read from
+   * @return The schema instance produced from the string
+   * @throws ReadException If the string does not conform to the
+   *   expected syntax
+   */
+  protected static SchemaElement parseSchemaFromString(MutableString s) throws ReadException
+  {
+    if (s == null)
+    {
+      return null;
+    }
+    s.trim();
+    SchemaElement out = null;
+    if (s.startsWith("FixedMap"))
+    {
+      out = new FixedMapElement();
+    }
+    else if (s.startsWith("List"))
+    {
+      out = new ListElement();
+    }
+    else if (s.startsWith("Integer"))
+    {
+      out = new IntegerElement();
+    }
+    else if (s.startsWith("Smallscii"))
+    {
+      out = new SmallsciiElement();
+    }
+    else
+    {
+      throw new ReadException("Cannot determine element");
+    }
+    out.readSchemaFromString(s);
+    return out;
+  }
+  
+  protected abstract void readSchemaFromString(MutableString s) throws ReadException;
+  
+  public void readContentsFromString(String s) throws ReadException
+  {
+    MutableString ms = new MutableString(s);
+    readContentsFromString(ms);
+  }
+  
+  protected abstract void readContentsFromString(MutableString s) throws ReadException;
+  
   protected abstract int readSchemaFromBitSequence(BitSequence bs) throws ReadException;
   
   public static class ElementInt
   {
     public SchemaElement m_element;
     public int m_int;
+  }
+  
+  protected static int findMatchingClosing(String s)
+  {
+    MutableString ms = new MutableString(s);
+    return findMatchingClosing(ms);    
+  }
+  
+  protected static int findMatchingClosing(MutableString s)
+  {
+    int level = 1, pos = 0;
+    while (level > 0 && pos < s.length())
+    {
+      pos++;
+      MutableString c = s.substring(pos, pos + 1);
+      if (c.is("(") || c.is("{") || c.is("["))
+      {
+        level++;
+      }
+      else if (c.is(")") || c.is("}") || c.is("]"))
+      {
+        level--;
+      }
+    }
+    return pos;
   }
 }

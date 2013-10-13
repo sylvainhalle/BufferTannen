@@ -44,12 +44,9 @@ public abstract class StringElement extends SchemaElement
   
   protected String toString(String indent)
   {
-    return m_contents;
-  }
-  
-  protected String schemaToString(String indent)
-  {
-    return "SmallsciiElement";
+    StringBuilder out = new StringBuilder();
+    out.append("\"").append(m_contents).append("\"");
+    return out.toString();
   }
   
   public BitSequence schemaToBitSequence()

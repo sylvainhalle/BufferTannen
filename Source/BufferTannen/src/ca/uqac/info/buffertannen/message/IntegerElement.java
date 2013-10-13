@@ -17,6 +17,8 @@
  -------------------------------------------------------------------------*/
 package ca.uqac.info.buffertannen.message;
 
+import ca.uqac.info.util.MutableString;
+
 /**
  * Representation of an <i>n</i>-bit, positive integer
  * @author sylvain
@@ -159,9 +161,68 @@ public class IntegerElement extends SchemaElement
     {
       throw new ReadException("Cannot read integer range");
     }
-    data = bs.truncatePrefix(4);
+    data = bs.truncatePrefix(RANGE_WIDTH);
     bits_read += RANGE_WIDTH;
     m_range = data.intValue();
     return bits_read;
+  }
+  
+  @Override
+  protected void readSchemaFromString(MutableString s) throws ReadException
+  {
+    s.truncateSubstring("Integer".length());
+    if (s.startsWith("("))
+    {
+      // Read range if any
+      int index = s.indexOf(")");
+      if (index < 0)
+      {
+        throw new ReadException("Invalid definition of an Integer");
+      }
+      MutableString sub_range = s.substring(1, index);
+      s.truncateSubstring(index + 1);
+      m_range = Integer.parseInt(sub_range.toString());
+      if (m_range < 0 || m_range >= RANGE_WIDTH)
+      {
+        throw new ReadException("Invalid range for Integer");
+      }
+    }
+    return;
+  }
+  
+  @Override
+  protected void readContentsFromString(MutableString s) throws ReadException
+  {
+    int index = s.length(), pos = 0;
+    pos = s.indexOf(",");
+    if (pos >= 0)
+    {
+      index = (int) Math.min(index, pos);
+    }
+    pos = s.indexOf("]");
+    if (pos >= 0)
+    {
+      index = (int) Math.min(index, pos);
+    }
+    pos = s.indexOf("}");
+    if (pos >= 0)
+    {
+      index = (int) Math.min(index, pos);
+    }
+    if (index < 0)
+    {
+      throw new ReadException("Error reading integer value");
+    }
+    MutableString value = null;
+    if (index < s.length())
+    {
+      value = s.truncateSubstring(index);
+    }
+    else
+    {
+      value = new MutableString(s);
+      s.clear();
+    }
+    this.m_value = Integer.parseInt(value.toString());
   }
 }

@@ -19,6 +19,8 @@ package ca.uqac.info.buffertannen.message;
 
 import java.util.*;
 
+import ca.uqac.info.util.MutableString;
+
 //import ca.uqac.info.buffertannen.BitSequence.FormatException;
 
 /**
@@ -238,8 +240,11 @@ public class ListElement extends SchemaElement
         out.append(",\n");
       }
       i++;
-      out.append(indent).append("  ").append(i).append(" : ").append(value.toString(indent + "  "));
+      out.append(indent).append("  ");
+      // out.append(i).append(" : "); // To show indices in table
+      out.append(value.toString(indent + "  "));
     }
+    out.append("\n");
     out.append(indent).append("]");
     return out.toString();
   }
@@ -297,5 +302,56 @@ public class ListElement extends SchemaElement
       m_contents.add(m_elementType.copy());
     }
     return bits_read;
+  }
+  
+  @Override
+  protected void readSchemaFromString(MutableString s) throws ReadException
+  {
+    s.truncateSubstring("List".length());
+    s.trim();
+    if (!s.startsWith("["))
+    {
+      // Should not happen
+      throw new ReadException("Invalid definition of a List");
+    }
+    int index = findMatchingClosing(s);
+    if (index < 0)
+    {
+      throw new ReadException("Invalid definition of a List");
+    }
+    MutableString value_string = s.substring(1, index);
+    m_elementType = SchemaElement.parseSchemaFromString(value_string);
+    s.truncateSubstring(index + 1);
+    return;
+  }
+  
+  @Override
+  protected void readContentsFromString(MutableString s) throws ReadException
+  {
+    if (!s.startsWith("["))
+    {
+      // Should not happen
+      throw new ReadException("Error reading List");
+    }
+    int index = findMatchingClosing(s);
+    if (index < 0)
+    {
+      throw new ReadException("Error reading List");
+    }
+    MutableString value_string = s.substring(1, index);
+    value_string.trim();
+    while (!value_string.isEmpty())
+    {
+      SchemaElement se = m_elementType.copy();
+      se.readContentsFromString(value_string);
+      m_contents.add(se);
+      value_string.trim();
+      if (value_string.startsWith(","))
+      {
+        value_string.truncateSubstring(1);
+        value_string.trim();
+      }
+    }
+    s.truncateSubstring(index + 1);
   }
 }

@@ -21,6 +21,7 @@ import ca.uqac.info.buffertannen.message.*;
 
 public class CommunicationTest
 {
+  @SuppressWarnings("unused")
   public static void main(String[] args)
   {
     Sender sender = new Sender();

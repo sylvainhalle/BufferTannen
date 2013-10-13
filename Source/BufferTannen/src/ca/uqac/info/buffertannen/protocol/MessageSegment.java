@@ -159,4 +159,14 @@ public class MessageSegment extends Segment
     bits_read += length;
     return bits_read;
   }
+  
+  @Override
+  public String toString()
+  {
+    StringBuilder out = new StringBuilder();
+    out.append("Segment type: message\n");
+    out.append("Schema number: ").append(m_schemaNumber).append("\n");
+    out.append("Sequence number: ").append(m_sequenceNumber).append("\n");
+    return out.toString();
+  }
 }

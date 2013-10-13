@@ -2,6 +2,8 @@ package ca.uqac.info.buffertannen.message;
 
 import java.util.Vector;
 
+import ca.uqac.info.util.MutableString;
+
 public class FixedMapElement extends SchemaElement
 {
   // We use two vectors rather than a map to store key-value pairs,
@@ -84,7 +86,7 @@ public class FixedMapElement extends SchemaElement
       SchemaElement value = m_values.get(i);
       int read = value.fromBitSequence(bs);
       bits_read += read;
-      bs.truncatePrefix(read);
+      //bs.truncatePrefix(read);
     }
     return bits_read;
   }
@@ -127,6 +129,7 @@ public class FixedMapElement extends SchemaElement
     BitSequence bit_seq = fme.schemaToBitSequence();
     try
     {
+      @SuppressWarnings("unused")
       ElementInt ei = SchemaElement.bitSequenceToSchema(bit_seq);
     } catch (ReadException e)
     {
@@ -206,11 +209,12 @@ public class FixedMapElement extends SchemaElement
     {
       String key = m_keys.get(i);
       SchemaElement value = m_values.get(i);
-      out.append(indent).append("  \"").append(key).append("\" : ").append(value.toString(indent + "  "));
+      out.append(indent).append("  ").append(key).append(" : ").append(value.toString(indent + "  "));
       if (i < m_keys.size() - 1)
       {
-        out.append(",\n");
+        out.append(",");
       }
+      out.append("\n");
     }
     out.append(indent).append("}");
     return out.toString();
@@ -219,16 +223,17 @@ public class FixedMapElement extends SchemaElement
   protected String schemaToString(String indent)
   {
     StringBuilder out = new StringBuilder();
-    out.append("{\n");
+    out.append("FixedMap {\n");
     for (int i = 0; i < m_keys.size(); i++)
     {
       String key = m_keys.get(i);
       SchemaElement value = m_values.get(i);
-      out.append(indent).append("  \"").append(key).append("\" : ").append(value.schemaToString(indent + "  "));
+      out.append(indent).append("  ").append(key).append(" : ").append(value.schemaToString(indent + "  "));
       if (i < m_keys.size() - 1)
       {
-        out.append(",\n");
+        out.append(",");
       }
+      out.append("\n");
     }
     out.append(indent).append("}");
     return out.toString();
@@ -291,6 +296,92 @@ public class FixedMapElement extends SchemaElement
       m_values.add(ei.m_element);
     }
     return bits_read;
+  }
+  
+  @Override
+  protected void readSchemaFromString(MutableString s) throws ReadException
+  {
+    s.truncateSubstring("FixedMap".length());
+    s.trim();
+    if (!s.startsWith("{"))
+    {
+      // Should not happen
+      throw new ReadException("Invalid definition of a Map");
+    }
+    int index = findMatchingClosing(s);
+    if (index < 0)
+    {
+      throw new ReadException("Invalid definition of a Map");
+    }
+    MutableString value_string = s.substring(1, index);
+    value_string.trim();
+    while (!value_string.isEmpty())
+    {
+      int colon_index = value_string.indexOf(":");
+      if (colon_index < 0)
+      {
+        throw new ReadException("Invalid definition of a Map");
+      }
+      MutableString key_part = value_string.substring(0, colon_index);
+      key_part.replaceAll("\"", "");
+      key_part.trim();
+      value_string.truncateSubstring(colon_index + 1);
+      value_string.trim();
+      SchemaElement se = SchemaElement.parseSchemaFromString(value_string);
+      m_keys.add(key_part.toString());
+      m_values.add(se);
+      value_string.trim();
+      if (value_string.startsWith(","))
+      {
+        value_string.truncateSubstring(1);
+        value_string.trim();
+      }
+    }
+    s.truncateSubstring(index + 1);
+  }
+  
+  @Override
+  protected void readContentsFromString(MutableString s) throws ReadException
+  {
+    if (!s.startsWith("{"))
+    {
+      // Should not happen
+      throw new ReadException("Error reading Map");
+    }
+    int index = findMatchingClosing(s);
+    if (index < 0)
+    {
+      throw new ReadException("Error reading Map");
+    }
+    MutableString value_string = s.substring(1, index);
+    value_string.trim();
+    while (!value_string.isEmpty())
+    {
+      int colon_index = value_string.indexOf(":");
+      if (colon_index < 0)
+      {
+        throw new ReadException("Error reading Map");
+      }
+      MutableString key_part = value_string.substring(0, colon_index);
+      key_part.replaceAll("\"", "");
+      key_part.trim();
+      value_string.truncateSubstring(colon_index + 1);
+      value_string.trim();
+      int key_index = m_keys.indexOf(key_part.toString());
+      if (key_index < 0)
+      {
+        throw new ReadException("Invalid key \"" + key_part.toString() + "\" while reading Map");
+      }
+      SchemaElement se = m_values.get(key_index);
+      se.readContentsFromString(value_string);
+      value_string.trim();
+      if (value_string.startsWith(","))
+      {
+        value_string.truncateSubstring(1);
+        value_string.trim();
+      }
+    }
+    s.truncateSubstring(index + 1);
   }
   
 }

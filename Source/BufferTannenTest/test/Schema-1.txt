@@ -1,0 +1,5 @@
+FixedMap {
+  "key1" : Smallscii,
+  "key2" : Smallscii,
+  "key3" : Integer(4)
+}

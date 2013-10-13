@@ -17,6 +17,8 @@
  -------------------------------------------------------------------------*/
 package ca.uqac.info.buffertannen.message;
 
+import ca.uqac.info.util.MutableString;
+
 /**
  * Smallscii is a set of 63 characters, intended to encode common
  * character strings at 6 bits per character. There is no character
@@ -167,9 +169,39 @@ public class SmallsciiElement extends StringElement
     return out;
   }
   
+  @Override
   protected int readSchemaFromBitSequence(BitSequence bs) throws ReadException
   {
     // Nothing more to read
     return 0;
+  }
+
+  @Override
+  protected void readSchemaFromString(MutableString s) throws ReadException
+  {
+    s.truncateSubstring("Smallscii".length());
+  }
+  
+  @Override
+  protected void readContentsFromString(MutableString s) throws ReadException
+  {
+    if (!s.startsWith("\""))
+    {
+      throw new ReadException("Error reading Smallscii string");
+    }
+    int index = s.indexOf("\"", 1);
+    if (index < 0)
+    {
+      throw new ReadException("Error reading Smallscii string");
+    }
+    MutableString value = s.truncateSubstring(index + 1);
+    value.replaceAll("\"", "");
+    m_contents = value.toString();
+  }
+  
+  @Override
+  protected String schemaToString(String indent)
+  {
+    return "Smallscii";
   }
 }

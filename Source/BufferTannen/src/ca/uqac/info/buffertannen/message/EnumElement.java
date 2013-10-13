@@ -19,6 +19,8 @@ package ca.uqac.info.buffertannen.message;
 
 import java.util.Vector;
 
+import ca.uqac.info.util.MutableString;
+
 public class EnumElement extends SchemaElement
 {
   protected Vector<String> m_constants;
@@ -204,6 +206,56 @@ public class EnumElement extends SchemaElement
       m_constants.add(ss_constant.m_contents);
     }
     return bits_read;
+  }
+  
+  @Override
+  protected void readSchemaFromString(MutableString s) throws ReadException
+  {
+    s.truncateSubstring("Enum".length()).trim();
+    if (!s.startsWith("{"))
+    {
+      throw new ReadException("Invalid definition of an Enum");
+    }
+    int index = s.indexOf("}");
+    if (index < 0)
+    {
+      throw new ReadException("Invalid definition of an Integer");
+    }
+    MutableString value_string = s.truncateSubstring(1, index);
+    MutableString[] values = value_string.split(",");
+    for (MutableString value : values)
+    {
+      value.trim();
+      if (value.isEmpty())
+      {
+        throw new ReadException("Empty value inside Enum");
+      }
+      m_constants.add(value.toString());
+    }
+    s.truncateSubstring(index + 1);
+    return;
+  }
+  
+  @Override
+  protected void readContentsFromString(MutableString s) throws ReadException
+  {
+    if (!s.startsWith("\""))
+    {
+      throw new ReadException("Error reading Enum value");
+    }
+    int index = s.indexOf("\"", 1);
+    if (index < 0)
+    {
+      throw new ReadException("Error reading Enum value");
+    }
+    MutableString value = s.truncateSubstring(index + 1);
+    value.replaceAll("\"", "");
+    String str_val = value.toString();
+    if (!m_constants.contains(str_val))
+    {
+      throw new ReadException("Enum value not in domain");
+    }
+    m_value = str_val;
   }
 
 }
