@@ -218,8 +218,9 @@ following specifications:
 
 Therefore, the communication channel envisioned as the transmission medium
 for BufferTannen's messages can be likened in many ways to a slow broadcast
-signal, such as [slow-scan television](http://en.wikipedia.org/wiki/Slow-scan_television)
-or [Hellschreiber](http://en.wikipedia.org/wiki/Hellschreiber).
+signal, such as [slow-scan television](http://en.wikipedia.org/wiki/Slow-scan_television),
+[Hellschreiber](http://en.wikipedia.org/wiki/Hellschreiber), or
+[RDS](http://en.wikipedia.org/wiki/Radio_Data_System).
 
 BufferTannen's protocol aims at transmitting messages as reliably as
 possible under these conditions, while preserving the integrity of data and
