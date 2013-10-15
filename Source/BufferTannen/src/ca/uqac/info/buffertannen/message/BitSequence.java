@@ -19,6 +19,9 @@ package ca.uqac.info.buffertannen.message;
 
 import java.util.Vector;
 
+import com.sun.org.apache.xml.internal.security.exceptions.Base64DecodingException;
+import com.sun.org.apache.xml.internal.security.utils.Base64;
+
 /**
  * Representation of a sequence of bits. This sequence can be converted
  * to/from an array of bytes.
@@ -51,10 +54,26 @@ public class BitSequence extends Vector<Boolean>
    * @param array The array of bytes
    * @param length The length (in <em>bits</em> of the bit sequence
    *   contained in the array of bytes
+   * @throws BitFormatException
    */
   public BitSequence(byte[] array, int length) throws BitFormatException
   {
     this();
+    readFromBytes(array, length);
+  }
+  
+  /**
+   * Reads an array of bytes. Since
+   * the array of bytes may represent a sequence of bits that is
+   * not a multiple of 8, the length of the bit sequence is also
+   * provided.
+   * @param array The array of bytes
+   * @param length The length (in <em>bits</em> of the bit sequence
+   *   contained in the array of bytes
+   * @throws BitFormatException
+   */
+  protected void readFromBytes(byte[] array, int length) throws BitFormatException
+  {
     int num_bytes = (int) Math.ceil(((float) length) / 8f);
     int cur_length = 0;
     if (num_bytes > array.length)
@@ -78,7 +97,7 @@ public class BitSequence extends Vector<Boolean>
         }
         cur_length++;
       }
-    }
+    }    
   }
   
   /**
@@ -123,7 +142,7 @@ public class BitSequence extends Vector<Boolean>
     this();
     for (int i = 0; i < s.length(); i++)
     {
-      String c = s.substring(i, 1);
+      String c = s.substring(i, i+1);
       if (c.compareTo("0") == 0)
       {
         this.add(false);
@@ -182,9 +201,9 @@ public class BitSequence extends Vector<Boolean>
     for (int i = 0; i < this.size(); i += 8)
     {
       byte b = 0;
-      for (byte j = 0; j < 8 && 8 * i + j < this.size(); j++)
+      for (byte j = 0; j < 8 && i + j < this.size(); j++)
       {
-        if (this.elementAt(8 * i + j) == true)
+        if (this.elementAt(i + j) == true)
         {
           b |= 1 << (7 - j);
         }
@@ -193,6 +212,72 @@ public class BitSequence extends Vector<Boolean>
       byte_pos++;
     }
     return out;
+  }
+  
+  /**
+   * Returns the binary content of the sequence as a string.
+   * This method simply converts the result of {@link toByteArray}
+   * into a String object. 
+   * @return The binary content
+   */
+  public String toByteString()
+  {
+    byte[] array = toByteArray();
+    String out = new String(array);
+    return out;
+  }
+  
+  /**
+   * Converts a string into an array of bits. The method simply converts the
+   * contents of the string into an array of bytes, whose binary
+   * content is then read.
+   * @param s The string to read from
+   * @param length The number of bits
+   * @throws BitFormatException 
+   */
+  public void fromByteString(String s, int length) throws BitFormatException
+  {
+    byte[] array = s.getBytes();
+    this.clear();
+    readFromBytes(array, length);
+  }
+  
+  /**
+   * Converts a string into an array of bits. The method simply converts the
+   * contents of the string into an array of bytes, whose binary
+   * content is then read.
+   * @param s The string to read from
+   * @throws BitFormatException 
+   */
+  public void fromByteString(String s) throws BitFormatException
+  {
+    byte[] array = s.getBytes();
+    this.clear();
+    readFromBytes(array, 8 * array.length);
+  }
+  
+  /**
+   * Converts a string into an array of bits. The method simply converts the
+   * contents of the string into an array of bytes, whose binary
+   * content is then read.
+   * @param s The string to read from, encoded in Base64
+   * @throws BitFormatException 
+   * @throws Base64DecodingException 
+   */
+  public void fromBase64(String s) throws BitFormatException, Base64DecodingException
+  {
+    byte[] data = Base64.decode(s);
+    readFromBytes(data, data.length * 8);
+  }
+  
+  /**
+   * Returns the binary content of the sequence as a Base64 string.
+   * @return The binary content in Base64
+   */
+  public String toBase64()
+  {
+    byte[] data = toByteArray();
+    return Base64.encode(data);
   }
   
   /**

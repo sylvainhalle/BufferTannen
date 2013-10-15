@@ -95,6 +95,7 @@ public class ListElement extends SchemaElement
     }
     BitSequence length = bs.truncatePrefix(8);
     read_bits += MAX_LENGTH_BITS;
+    m_contents.clear();
     int num_elements = length.intValue();
     for (int i = 0; i < num_elements; i++)
     {

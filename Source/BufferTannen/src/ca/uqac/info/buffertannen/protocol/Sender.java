@@ -22,13 +22,21 @@ import java.util.LinkedList;
 import java.util.Map;
 
 import ca.uqac.info.buffertannen.message.BitSequence;
+import ca.uqac.info.buffertannen.message.ReadException;
 import ca.uqac.info.buffertannen.message.SchemaElement;
 
 public class Sender
 {
   protected LinkedList<Segment> m_segmentBuffer;
   
+  protected LinkedList<Segment> m_segmentToRepeatBuffer;
+  
   protected Map<Integer,SchemaElement> m_schemas;
+  
+  /**
+   * The maximum length of a frame, in bits
+   */
+  protected int m_maxFrameLength = 512; 
   
   /**
    * The number of the last schema sent. This is used when
@@ -41,8 +49,20 @@ public class Sender
    * The interval at which to broadcast message schemas. For example,
    * if set to 2, the sender inserts a schema segment after every 2
    * segments sent. Set to 0 for no periodical broadcast at all.
+   * If used, this value should be lower than {@Sender.m_repeatAfterN},
+   * so that a schema retransmission always occurs between the time
+   * a segment is received and the time where it is declared lost.
    */
-  protected int m_broadcastSchemasEveryN = 2;
+  protected int m_broadcastSchemasEveryN = 10;
+  
+  /**
+   * The interval after which to repeat a segment a second time.
+   * Set to 0 for no repetition at all. This value must not
+   * be greater than {@link Receiver.m_lostInterval}, otherwise the
+   * receiver will declare a segment as lost before the sender
+   * has had a chance to transmit it again. 
+   */
+  protected int m_repeatAfterN = 20;
   
   /**
    * A counter to give sequential numbers to segments
@@ -53,7 +73,17 @@ public class Sender
   {
     super();
     m_segmentBuffer = new LinkedList<Segment>();
+    m_segmentToRepeatBuffer = new LinkedList<Segment>();
     m_schemas = new HashMap<Integer,SchemaElement>();
+  }
+  
+  /**
+   * Sets the maximum length of a frame
+   * @param length Length of a frame, in bits
+   */
+  public void setFrameMaxLength(int length)
+  {
+    m_maxFrameLength = length;
   }
   
   /**
@@ -86,11 +116,17 @@ public class Sender
     // within frame size limits
     int total_size = 0;
     Frame f = new Frame();
-    while (total_size < Frame.MAX_LENGTH && !m_segmentBuffer.isEmpty())
+    while (total_size < m_maxFrameLength && !m_segmentBuffer.isEmpty())
     {
       Segment seg = m_segmentBuffer.getFirst();
+      int segment_size = seg.getSize();
+      if (segment_size > m_maxFrameLength)
+      {
+        // Problem: this segment will never fit into a frame!
+        System.err.println("ERROR: found a segment larger than max frame size");
+      }
       total_size += seg.getSize();
-      if (total_size < Frame.MAX_LENGTH)
+      if (total_size < m_maxFrameLength)
       {
         m_segmentBuffer.removeFirst();
         f.add(seg);
@@ -115,6 +151,8 @@ public class Sender
     ms.setContents(e.toBitSequence());
     // Add to buffer
     m_segmentBuffer.add(ms);
+    // Add to repeat buffer
+    m_segmentToRepeatBuffer.add(ms);
     if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 0)
     {
       // It's time to broadcast a schema
@@ -129,6 +167,38 @@ public class Sender
         break;
       }
     }
+    if (m_repeatAfterN > 0)
+    {
+      while (!m_segmentToRepeatBuffer.isEmpty())
+      {
+        Segment seg_to_rep = m_segmentToRepeatBuffer.peekFirst();
+        int seq_num = seg_to_rep.getSequenceNumber();
+        if (m_sequenceNumber - seq_num > m_repeatAfterN)
+        {
+          // Time to repeat the segment
+          m_segmentBuffer.add(seg_to_rep);
+          m_segmentToRepeatBuffer.removeFirst();
+        }
+        else 
+        {
+          // Since segments are stored in the buffer in increasing sequential no,
+          // no further segment will be in the desired interval
+          break;
+        }
+      }
+    }
+  }
+  
+  public void addMessage(int number, String contents) throws ReadException, UnknownSchemaException
+  {
+    if (!m_schemas.containsKey(number))
+    {
+      // Schema number does not exist: fail
+      throw new UnknownSchemaException();
+    }
+    SchemaElement se = m_schemas.get(number).copy();
+    se.readContentsFromString(contents);
+    addMessage(number, se);
   }
   
   /**
@@ -166,5 +236,17 @@ public class Sender
       return;
     }
     m_schemas.put(number, se);
+  }
+  
+  /**
+   * Assigns a given schema to a schema number, parsing it from a string
+   * @param number The number to put the schema in the bank
+   * @param se The schema to put
+   * @throws ReadException If cannot parse a schema from the string
+   */
+  public void setSchema(int number, String contents) throws ReadException
+  {
+    SchemaElement se = SchemaElement.parseSchemaFromString(contents);
+    setSchema(number, se);
   }
 }

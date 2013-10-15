@@ -37,12 +37,27 @@ public class Frame extends Vector<Segment>
   protected static final int VERSION_NUMBER = 1;
   
   /**
+   * The log of 2
+   */
+  protected static final double LOG_2 = Math.log(2);
+  
+  /**
    * Number of bits used to encode the frame length.
    * Currently 12 bits are used, giving a frame a
    * maximum length of 4096 bits.
    */
-  protected static final int LENGTH_WIDTH = 12;
-  protected static final int MAX_LENGTH = (int) Math.pow(2, LENGTH_WIDTH);
+  protected int m_lengthWidth = 12;
+  protected int m_maxLength = (int) Math.pow(2, m_lengthWidth);
+  
+  /**
+   * Sets the maximum length for the frame
+   * @param length
+   */
+  protected void setMaxLength(int length)
+  {
+    m_maxLength = length;
+    m_lengthWidth = (int) Math.ceil(Math.log(length) / LOG_2);
+  }
   
   public BitSequence toBitSequence()
   {
@@ -55,7 +70,8 @@ public class Frame extends Vector<Segment>
       sequences.add(seg_seq);
       length += seg_seq.size();
     }
-    if (length > MAX_LENGTH)
+    length += 4 + m_lengthWidth; // Add the 4 of version number and length 
+    if (length > m_maxLength)
     {
       // Data is too long for frame: fail
       return null;
@@ -65,7 +81,7 @@ public class Frame extends Vector<Segment>
       BitSequence data;
       data = new BitSequence(VERSION_NUMBER, 4);
       out.addAll(data);
-      data = new BitSequence(length, LENGTH_WIDTH);
+      data = new BitSequence(length, m_lengthWidth);
       out.addAll(data);
     }
     catch (BitFormatException e)
@@ -95,12 +111,12 @@ public class Frame extends Vector<Segment>
     {
       throw new ReadException("Incorrect version number");
     }
-    if (bs.size() < LENGTH_WIDTH)
+    if (bs.size() < m_lengthWidth)
     {
       throw new ReadException("Cannot read frame length");
     }
-    data = bs.truncatePrefix(LENGTH_WIDTH);
-    bits_read += LENGTH_WIDTH;
+    data = bs.truncatePrefix(m_lengthWidth);
+    bits_read += m_lengthWidth;
     int frame_length = data.intValue();
     while (bits_read < frame_length)
     {

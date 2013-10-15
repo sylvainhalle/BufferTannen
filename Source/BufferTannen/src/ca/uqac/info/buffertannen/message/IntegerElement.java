@@ -39,9 +39,16 @@ public class IntegerElement extends SchemaElement
   protected static final int DEFAULT_RANGE = 16;
   
   /**
-   * Number of bits to encode range
+   * Number of bits to encode range. Look out! This is not
+   * the range itself, which may be anything between 1 and 2^<sup>RANGE_WIDTH</sup>
    */
-  public static final int RANGE_WIDTH = 6;
+  public static final int RANGE_WIDTH = 5;
+  
+  /**
+   * Maximum integer range that can be encoded with the bits
+   * (i.e. 2^<sup>RANGE_WIDTH</sup>)
+   */
+  public static final int MAX_RANGE = (int) Math.pow(2,  RANGE_WIDTH);
   
   public IntegerElement()
   {
@@ -182,7 +189,7 @@ public class IntegerElement extends SchemaElement
       MutableString sub_range = s.substring(1, index);
       s.truncateSubstring(index + 1);
       m_range = Integer.parseInt(sub_range.toString());
-      if (m_range < 0 || m_range >= RANGE_WIDTH)
+      if (m_range <= 0 || m_range >= MAX_RANGE)
       {
         throw new ReadException("Invalid range for Integer");
       }

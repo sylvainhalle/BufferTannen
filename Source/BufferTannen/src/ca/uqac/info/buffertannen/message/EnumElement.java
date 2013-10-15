@@ -72,7 +72,7 @@ public class EnumElement extends SchemaElement
   public int fromBitSequence(BitSequence bs) throws ReadException
   {
     int num_bits = (int) Math.ceil((Math.log(m_constants.size()) / LOG_2));
-    if (num_bits < bs.size())
+    if (num_bits > bs.size())
     {
       // Invalid input
       throw new ReadException();
@@ -211,17 +211,20 @@ public class EnumElement extends SchemaElement
   @Override
   protected void readSchemaFromString(MutableString s) throws ReadException
   {
-    s.truncateSubstring("Enum".length()).trim();
+    s.truncateSubstring("Enum".length());
+    s.trim();
     if (!s.startsWith("{"))
     {
       throw new ReadException("Invalid definition of an Enum");
     }
-    int index = s.indexOf("}");
+    int index = s.indexOf("}", 1);
     if (index < 0)
     {
-      throw new ReadException("Invalid definition of an Integer");
+      throw new ReadException("Invalid definition of an Enum");
     }
-    MutableString value_string = s.truncateSubstring(1, index);
+    MutableString value_string = s.truncateSubstring(index + 1);
+    value_string.replaceAll("\\{", ""); // With backslashes, since it is a regex
+    value_string.replaceAll("\\}", "");
     MutableString[] values = value_string.split(",");
     for (MutableString value : values)
     {
@@ -230,9 +233,10 @@ public class EnumElement extends SchemaElement
       {
         throw new ReadException("Empty value inside Enum");
       }
+      value.replaceAll("\"", "");
       m_constants.add(value.toString());
     }
-    s.truncateSubstring(index + 1);
+    //s.truncateSubstring(index + 1);
     return;
   }
   

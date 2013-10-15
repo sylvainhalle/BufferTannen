@@ -43,7 +43,7 @@ public class SchemaSegment extends Segment
   @Override
   public int getSize()
   {
-    return SCHEMA_NUMBER_WIDTH + m_schema.schemaToBitSequence().size();
+    return SCHEMA_NUMBER_WIDTH + TYPE_WIDTH + SEQUENCE_WIDTH + m_schema.schemaToBitSequence().size();
   }
   
   /**

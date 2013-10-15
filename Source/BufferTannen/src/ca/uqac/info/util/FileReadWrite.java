@@ -15,10 +15,21 @@ public class FileReadWrite
    */
   public static void writeToFile(String filename, String contents)  throws IOException
   {
+    writeToFile(new File(filename), contents);
+  }
+  
+  /**
+   * Writes a string to a file. The method ends the program
+   * if some IOException is thrown.
+   * @param filename The file to write to
+   * @param contents The file's contents
+   */
+  public static void writeToFile(File f, String contents) throws IOException
+  {
     OutputStreamWriter out = null;
     try
     {
-      out = new OutputStreamWriter(new FileOutputStream(filename), "UTF-8");
+      out = new OutputStreamWriter(new FileOutputStream(f), "UTF-8");
       out.write(contents);
     }
     catch (java.io.IOException e)
@@ -29,7 +40,7 @@ public class FileReadWrite
     {
       if (out != null)
         out.close();
-    }
+    }    
   }
   
   /**
@@ -40,11 +51,16 @@ public class FileReadWrite
    */
   public static String readFile(String filename) throws IOException
   {
+    return readFile(new File(filename));
+  }
+  
+  public static String readFile(File f) throws IOException
+  {
     java.util.Scanner scanner = null;
     StringBuilder out = new StringBuilder();
     try
     {
-      scanner = new java.util.Scanner(new java.io.FileInputStream(filename), "UTF-8");
+      scanner = new java.util.Scanner(new java.io.FileInputStream(f), "UTF-8");
       while (scanner.hasNextLine())
       {
         String line = scanner.nextLine();
@@ -63,7 +79,7 @@ public class FileReadWrite
       if (scanner != null)
         scanner.close();
     }
-    return out.toString();
+    return out.toString();    
   }
   
   /**

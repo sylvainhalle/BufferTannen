@@ -48,7 +48,7 @@ public class Receiver
   /**
    * Expected sequence number of next segment
    */
-  protected int m_expectedSequenceNumber = 0;
+  protected int m_expectedSequenceNumber = -1;
   
   /**
    * Number of messages lost since the beginning of the communication
@@ -62,7 +62,7 @@ public class Receiver
    * If segment n+k (k &geq; 10) is received, segment n is declared lost and
    * the expected segment number is incremented to n + k-10.
    */
-  protected int m_lostInterval = 10;
+  protected int m_lostInterval = 21;
   
   /**
    * The bank of schemas to interpret the messages
@@ -75,6 +75,11 @@ public class Receiver
     m_schemas = new HashMap<Integer,SchemaElement>();
     m_receivedSegments = new LinkedList<Segment>();
     m_receivedMessages = new LinkedList<SchemaElement>();
+  }
+  
+  public int getMessageLostCount()
+  {
+    return m_messagesLost;
   }
   
   public void putBitSequence(BitSequence bs)
@@ -101,15 +106,36 @@ public class Receiver
         SchemaElement se = ((SchemaSegment) seg).getSchema();
         int s_number = ((SchemaSegment) seg).getSchemaNumber();
         m_schemas.put(s_number, se);
+        System.err.println("Received schema " + s_number);
       }
       else if (seg instanceof MessageSegment)
       {
+        System.err.println("Received segment " + seg.getSequenceNumber());
         insertSegment(seg);       
       }
     }
+    if (m_receivedSegments.isEmpty())
+    {
+      // Nothing more to do: segment buffer is empty
+      return;
+    }
+    // We still haven't processed any frame; as we may pick an already
+    // ongoing transmission, set sequence number to smallest one
+    // received and start expecting segments from that number on
+    if (m_expectedSequenceNumber == -1)
+    {
+      Segment min_seg = m_receivedSegments.peekFirst();
+      m_expectedSequenceNumber = min_seg.getSequenceNumber();
+      System.err.println("Setting sequence number to " + m_expectedSequenceNumber);
+    }
     // Compute difference between highest and lowest sequence number
+    int force_send = 0;
     Segment max_seg = m_receivedSegments.peekLast();
-    int force_send = max_seg.getSequenceNumber() - m_lostInterval;
+    if (max_seg != null)
+    {
+      force_send = max_seg.getSequenceNumber() - m_lostInterval;
+      
+    }
     while (!m_receivedSegments.isEmpty())
     {
       Segment seg = m_receivedSegments.peekFirst();
@@ -168,8 +194,15 @@ public class Receiver
         break;
       }
       // We decoded the message successfully
+      if (seq_no < force_send)
+      {
+        // ...but we were forced to
+        m_messagesLost += (seq_no - m_expectedSequenceNumber);
+        System.err.println("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages");
+      }
+      System.err.println("Successfully processed segment " + seq_no);
       m_receivedMessages.add(se);
-      m_expectedSequenceNumber = (m_expectedSequenceNumber + 1) % Segment.MAX_SEQUENCE;
+      m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
       m_receivedSegments.removeFirst();        
     }
   }
@@ -185,6 +218,12 @@ public class Receiver
   {
     int seq_no = seg.getSequenceNumber();
     int i = 0;
+    if (seq_no < m_expectedSequenceNumber)
+    {
+      // This segment is a repetition of one we already processed: ignore
+      System.err.println("Segment already seen: " + seq_no);
+      return;
+    }
     if (m_receivedSegments.isEmpty())
     {
       m_receivedSegments.add(seg);
@@ -192,23 +231,33 @@ public class Receiver
     }
     int first_seg_pos = m_receivedSegments.peekFirst().getSequenceNumber();
     int last_seg_pos = m_receivedSegments.peekLast().getSequenceNumber();
-    if (seq_no < first_seg_pos && )
-    int distance_to_left = (first_seg.getSequenceNumber() - seq_no);
-    int distance_to_right = (seq_no - last_seg.getSequenceNumber());
-    if (first_seg.getSequenceNumber() > seq_no)
+    if (first_seg_pos > seq_no)
     {
       m_receivedSegments.addFirst(seg);
       return;
     }
+    boolean added = false;
     for (Segment cur_seg : m_receivedSegments)
     {
       i++;
       int cur_no = cur_seg.getSequenceNumber();
-      if (cur_no < seq_no)
+      if (cur_no > seq_no)
       {
-        m_receivedSegments.add(i, seg);
+        m_receivedSegments.add(i - 1, seg);
+        added = true;
         break;
       }
+      else if (cur_no == seq_no)
+      {
+        // This segment is already in the buffer: ignore
+        System.err.println("Segment already in buffer: " + seq_no);
+        added = true;
+        break;
+      }
+    }
+    if (!added)
+    {
+      m_receivedSegments.addLast(seg);
     }
   }
   

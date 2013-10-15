@@ -43,7 +43,7 @@ public class MessageSegment extends Segment
   @Override
   public int getSize()
   {
-    return LENGTH_WIDTH + m_contents.size();
+    return TYPE_WIDTH + SEQUENCE_WIDTH + SCHEMA_WIDTH + LENGTH_WIDTH + m_contents.size();
   }
   
   /**

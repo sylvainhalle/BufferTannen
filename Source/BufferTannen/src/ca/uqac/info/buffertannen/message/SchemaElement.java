@@ -127,7 +127,7 @@ public abstract class SchemaElement
     default:
       throw new ReadException("Unknown element type");
     }
-    bits_read = el.readSchemaFromBitSequence(bs);
+    bits_read += el.readSchemaFromBitSequence(bs);
     ei.m_element = el;
     ei.m_int = bits_read;
     return ei;
@@ -172,6 +172,10 @@ public abstract class SchemaElement
     else if (s.startsWith("Integer"))
     {
       out = new IntegerElement();
+    }
+    else if (s.startsWith("Enum"))
+    {
+      out = new EnumElement();
     }
     else if (s.startsWith("Smallscii"))
     {
