@@ -29,6 +29,7 @@ public abstract class Segment
   public static final int SEGMENT_BLOB = 0;
   public static final int SEGMENT_MESSAGE = 1;
   public static final int SEGMENT_SCHEMA = 2;
+  public static final int SEGMENT_DELTA = 3;
   public static final int TYPE_WIDTH = 2;
   public static final int SEQUENCE_WIDTH = 12;
   public static final int MAX_SEQUENCE = (int) Math.pow(2, SEQUENCE_WIDTH);

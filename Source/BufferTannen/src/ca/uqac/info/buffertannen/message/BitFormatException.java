@@ -19,10 +19,24 @@ package ca.uqac.info.buffertannen.message;
 
 public class BitFormatException extends MessageException
 {
-
   /**
    * Dummy UID
    */
   private static final long serialVersionUID = 1L;
+  
+  /**
+   * Message prefix 
+   */
+  protected static final String MESSAGE_PREFIX = "Bit format error";
+  
+  public BitFormatException()
+  {
+    super(MESSAGE_PREFIX);
+  }
+  
+  public BitFormatException(String message)
+  {
+    super(MESSAGE_PREFIX, message);
+  }
 
 }

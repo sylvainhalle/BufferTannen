@@ -24,13 +24,18 @@ public class TypeMismatchException extends MessageException
    */
   private static final long serialVersionUID = 1L;
   
+  /**
+   * Message prefix 
+   */
+  protected static final String MESSAGE_PREFIX = "Type mismatch";
+  
   public TypeMismatchException()
   {
-    super();
+    super(MESSAGE_PREFIX);
   }
   
   public TypeMismatchException(String message)
   {
-    super(message);
+    super(MESSAGE_PREFIX, message);
   }
 }

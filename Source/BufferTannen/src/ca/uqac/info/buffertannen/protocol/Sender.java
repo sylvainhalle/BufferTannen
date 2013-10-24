@@ -22,8 +22,10 @@ import java.util.LinkedList;
 import java.util.Map;
 
 import ca.uqac.info.buffertannen.message.BitSequence;
+import ca.uqac.info.buffertannen.message.CannotComputeDeltaException;
 import ca.uqac.info.buffertannen.message.ReadException;
 import ca.uqac.info.buffertannen.message.SchemaElement;
+import ca.uqac.info.buffertannen.message.TypeMismatchException;
 
 public class Sender
 {
@@ -56,6 +58,12 @@ public class Sender
   protected int m_broadcastSchemasEveryN = 10;
   
   /**
+   * The number of consecutive delta-segments that can be sent before
+   * transmitting a new message segment.
+   */
+  protected int m_deltaSegmentInterval = 10;
+  
+  /**
    * The interval after which to repeat a segment a second time.
    * Set to 0 for no repetition at all. This value must not
    * be greater than {@link Receiver.m_lostInterval}, otherwise the
@@ -68,6 +76,25 @@ public class Sender
    * A counter to give sequential numbers to segments
    */
   protected int m_sequenceNumber = 0;
+  
+  /**
+   * The number of delta segments sent since the last message segment
+   */
+  protected int m_deltaSegmentsSent = -1;
+  
+  /**
+   * The segment sequence number of the last message sent as a
+   * complete message segment.
+   */
+  protected int m_lastFullMessageSentNumber = -1;
+  
+  /**
+   * A memory of the last message sent as a complete message segment.
+   * Delta-segments will be calculated with respect to this reference
+   * segment.
+   */
+  protected SchemaElement m_lastFullMessageSent = null;
+  
   
   public Sender()
   {
@@ -84,6 +111,16 @@ public class Sender
   public void setFrameMaxLength(int length)
   {
     m_maxFrameLength = length;
+  }
+  
+  /**
+   * Sets the interval at which message segmentsmust be sent.
+   * @param interval Interval at which message segmentsmust be sent.
+   *   Set to 0 to disable delta segments completely.
+   */
+  public void setDeltaSegmentInterval(int interval)
+  {
+    m_deltaSegmentInterval = interval;
   }
   
   /**
@@ -143,16 +180,66 @@ public class Sender
    */
   public void addMessage(int number, SchemaElement e)
   {
+    addMessage(number, e, false);
+  }
+  
+  /**
+   * Adds a message with given schema number to the sender's
+   * segment buffer
+   * @param number The schema number associated to that message
+   * @param e The message to send
+   * @param force_full Set to true to force the message to be sent
+   *   in a full message segment, instead of as a delta segment
+   */
+  public void addMessage(int number, SchemaElement e, boolean force_full)
+  {
     // Create frame with message
-    MessageSegment ms = new MessageSegment();
+    MessageSegment ms = null; 
+    if (!(force_full || m_deltaSegmentsSent == -1 || m_deltaSegmentsSent > m_deltaSegmentInterval || m_lastFullMessageSent == null))
+    {
+      // We can afford to send a delta-segment instead
+      ms = new DeltaSegment();
+      ((DeltaSegment) ms).setDeltaToWhat(m_lastFullMessageSentNumber);
+      SchemaElement delta = null;
+      try
+      {
+        delta = SchemaElement.createFromDelta(m_lastFullMessageSent, e);
+      }
+      catch (TypeMismatchException e1)
+      {
+        // Set ms back to null so as to force creation of a message segment
+        // (below)
+        ms = null;
+      }
+      catch (CannotComputeDeltaException e1)
+      {
+        // Set ms back to null so as to force creation of a message segment
+        // (below)
+        ms = null;
+      }
+      if (delta != null)
+      {
+        ms.setContents(delta.toBitSequence(true));
+        m_deltaSegmentsSent++;
+      }
+    }
+    if (ms == null)
+    {
+      // It is time to create a message segment
+      ms = new MessageSegment();
+      ms.setSchemaNumber(number);
+      ms.setContents(e.toBitSequence());
+      m_deltaSegmentsSent = 0;
+      m_lastFullMessageSent = e;
+      m_lastFullMessageSentNumber = m_sequenceNumber;
+    }
     ms.setSequenceNumber(m_sequenceNumber);
-    m_sequenceNumber = (m_sequenceNumber + 1) % Segment.MAX_SEQUENCE;
-    ms.setSchemaNumber(number);
-    ms.setContents(e.toBitSequence());
     // Add to buffer
     m_segmentBuffer.add(ms);
     // Add to repeat buffer
     m_segmentToRepeatBuffer.add(ms);
+    // Update sequence number
+    m_sequenceNumber = (m_sequenceNumber + 1) % Segment.MAX_SEQUENCE;
     if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 0)
     {
       // It's time to broadcast a schema

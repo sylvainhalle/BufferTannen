@@ -64,9 +64,14 @@ public class SmallsciiElement extends StringElement
     return s_characters.substring(code - 1, code);
   }
   
-  public BitSequence toBitSequence()
+  public BitSequence toBitSequence(boolean as_delta)
   {
     BitSequence bs = new BitSequence();
+    if (as_delta)
+    {
+      // Send a single 1 bit, indicating a change
+      bs.add(true);
+    }
     for (int i = 0; i < m_contents.length(); i++)
     {
       String letter = m_contents.substring(i, i+1);
@@ -203,5 +208,46 @@ public class SmallsciiElement extends StringElement
   protected String schemaToString(String indent)
   {
     return "Smallscii";
+  }
+  
+  @Override
+  public void readContentsFromDelta(SchemaElement reference, SchemaElement delta)
+      throws ReadException
+  {
+    if (!(reference instanceof SmallsciiElement))
+    {
+      throw new ReadException("Type mismatch in reference element: expected a SmallsciiElement");
+    }
+    SmallsciiElement el = (SmallsciiElement) reference;
+    if (delta instanceof NoChangeElement)
+    {
+      // No change: copy into self value of reference enum
+      m_contents = new String(el.m_contents);
+      return;
+    }
+    // Change: make sure that delta is of proper type
+    if (!(delta instanceof SmallsciiElement))
+    {
+      throw new ReadException("Type mismatch in delta element: expected a SmallsciiElement or a no-change");
+    }
+    SmallsciiElement del = (SmallsciiElement) delta;
+    // Everything OK: copy value of delta into self
+    m_contents = del.m_contents;
+  }
+
+  /**
+   * Populates the as a difference between the element to represent,
+   * and another element to be used as a reference
+   * @param reference The element to use as a reference
+   * @param new_one The new element
+   * @return A Schema element representing the difference between reference and new_one
+   */
+  protected static SchemaElement populateFromDelta(SmallsciiElement reference, SmallsciiElement new_one)
+  {
+    if (reference.m_contents.compareTo(new_one.m_contents) == 0)
+    {
+      return new NoChangeElement();
+    }
+    return new_one;
   }
 }

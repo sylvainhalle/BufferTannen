@@ -91,12 +91,18 @@ public class IntegerElement extends SchemaElement
   }
 
   @Override
-  public BitSequence toBitSequence()
+  public BitSequence toBitSequence(boolean as_delta)
   {
-    BitSequence bs = null;
+    BitSequence bs = new BitSequence();
+    if (as_delta)
+    {
+      // Send a single 1 bit, indicating a change
+      bs.add(true);
+    }
     try
     {
-      bs = new BitSequence(m_value, m_range);
+      BitSequence new_bs = new BitSequence(m_value, m_range);
+      bs.addAll(new_bs);
     }
     catch (BitFormatException e)
     {
@@ -231,5 +237,47 @@ public class IntegerElement extends SchemaElement
       s.clear();
     }
     this.m_value = Integer.parseInt(value.toString());
+  }
+
+  @Override
+  public void readContentsFromDelta(SchemaElement reference, SchemaElement delta)
+      throws ReadException
+  {
+    if (!(reference instanceof IntegerElement))
+    {
+      throw new ReadException("Type mismatch in reference element: expected an Integer");
+    }
+    IntegerElement el = (IntegerElement) reference;
+    if (delta instanceof NoChangeElement)
+    {
+      // No change: copy into self value of reference enum
+      m_value = el.m_value;
+      return;
+    }
+    // Change: make sure that delta is of proper type
+    if (!(delta instanceof IntegerElement))
+    {
+      throw new ReadException("Type mismatch in delta element: expected an Integer or a no-change");
+    }
+    IntegerElement del = (IntegerElement) delta;
+    // Everything OK: copy value of reference + delta into self
+    m_value = el.m_value + del.m_value;
+  }
+  
+  /**
+   * Populates the as a difference between the element to represent,
+   * and another element to be used as a reference
+   * @param reference The element to use as a reference
+   * @param new_one The new element
+   * @return A Schema element representing the difference between reference and new_one
+   */
+  protected static SchemaElement populateFromDelta(IntegerElement reference, IntegerElement new_one)
+  {
+    int difference = new_one.m_value - reference.m_value;
+    if (difference == 0)
+    {
+      return new NoChangeElement();
+    }
+    return new IntegerElement(difference);
   }
 }

@@ -1,3 +1,20 @@
+/*-------------------------------------------------------------------------
+    Buffer Tannen, a binary message protocol
+    Copyright (C) 2013  Sylvain Hallé
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ -------------------------------------------------------------------------*/
 package ca.uqac.info.buffertannen.message;
 
 import java.util.Vector;
@@ -66,9 +83,14 @@ public class FixedMapElement extends SchemaElement
   }
 
   @Override
-  public BitSequence toBitSequence()
+  public BitSequence toBitSequence(boolean as_delta)
   {
     BitSequence out = new BitSequence();
+    if (as_delta)
+    {
+      // Send a single 1 bit, indicating a change
+      out.add(true);
+    }
     for (int i = 0; i < m_keys.size(); i++)
     {
       SchemaElement value = m_values.get(i);
@@ -382,6 +404,98 @@ public class FixedMapElement extends SchemaElement
       }
     }
     s.truncateSubstring(index + 1);
+  }
+  
+  @Override
+  public void readContentsFromDelta(SchemaElement reference, SchemaElement delta)
+      throws ReadException
+  {
+    if (!(reference instanceof FixedMapElement))
+    {
+      throw new ReadException("Type mismatch in reference element: expected a FixedMapElement");
+    }
+    FixedMapElement el = (FixedMapElement) reference;
+    if (delta instanceof NoChangeElement)
+    {
+      // No change: copy into self value of reference list
+      m_values.clear();
+      for (SchemaElement value : el.m_values)
+      {
+        SchemaElement element_copy = value.copy();
+        m_values.add(element_copy);
+      }
+      return;
+    }
+    // Change: make sure that delta is of proper type
+    if (!(delta instanceof FixedMapElement))
+    {
+      throw new ReadException("Type mismatch in delta element: expected a FixedMapElement or a no-change");
+    }
+    FixedMapElement del = (FixedMapElement) delta;
+    // Everything OK: process each element of the list, again computing
+    // difference between matching reference and delta list items
+    int min_size = Math.min(el.m_values.size(), del.m_values.size());
+    for (int i = 0; i < min_size; i++)
+    {
+      SchemaElement ref_el = el.m_values.get(i);
+      SchemaElement del_el = del.m_values.get(i);
+      SchemaElement element_to_add = ref_el.copy();
+      element_to_add.readContentsFromDelta(ref_el, del_el);
+      m_values.add(element_to_add);
+    }
+  }
+  
+  /**
+   * Populates the as a difference between the element to represent,
+   * and another element to be used as a reference.
+   * <p>
+   * In the case of a map,
+   * key-value pairs from both maps are compared one by one, and their delta is
+   * computed recursively. At the end of the process, if no delta was necessary
+   * for any key-value pair, a {@link NoChangeElement} is returned in place of the
+   * map itself. If the keys for both operands are different or do not appear
+   * exactly in the same order,  a {@link TypeMismatchException} is thrown.
+   * @param reference The element to use as a reference
+   * @param new_one The new element
+   * @return A Schema element representing the difference between reference and new_one
+   * @throws TypeMismatchException Indicates that the declared keys for list
+   *   elements in both arguments is not the same
+   */
+  protected static SchemaElement populateFromDelta(FixedMapElement reference, FixedMapElement new_one) throws TypeMismatchException, CannotComputeDeltaException
+  {
+    if (reference.m_keys.size() != new_one.m_keys.size())
+    {
+      throw new TypeMismatchException("Maps don't have the same keys");
+    }
+    boolean contains_a_change = false;
+    FixedMapElement out = new FixedMapElement();
+    for (int i = 0; i < reference.m_keys.size(); i++)
+    {
+      String ref_key = reference.m_keys.elementAt(i);
+      String new_key = new_one.m_keys.elementAt(i);
+      if (ref_key.compareTo(new_key) != 0)
+      {
+        throw new TypeMismatchException("Maps don't have the same keys");
+      }
+      SchemaElement ref_val = reference.m_values.elementAt(i);
+      SchemaElement new_val = reference.m_values.elementAt(i);
+      if (ref_val.getClass() != new_val.getClass())
+      {
+        throw new TypeMismatchException("Types for the value don't match");
+      }
+      SchemaElement delta_val = SchemaElement.createFromDelta(ref_val, new_val);
+      if (!(delta_val instanceof NoChangeElement))
+      {
+        contains_a_change = true;
+      }
+      out.m_keys.add(ref_key);
+      out.m_values.add(delta_val);
+    }
+    if (!contains_a_change)
+    {
+      return new NoChangeElement();
+    }
+    return out;
   }
   
 }

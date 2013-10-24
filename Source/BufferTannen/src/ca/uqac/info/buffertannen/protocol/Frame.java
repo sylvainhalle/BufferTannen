@@ -42,6 +42,11 @@ public class Frame extends Vector<Segment>
   protected static final double LOG_2 = Math.log(2);
   
   /**
+   * Whether to pad a frame with zeros to always reach the maximum size
+   */
+  protected static final boolean PAD_FRAME = true;
+  
+  /**
    * Number of bits used to encode the frame length.
    * Currently 12 bits are used, giving a frame a
    * maximum length of 4096 bits.
@@ -93,6 +98,14 @@ public class Frame extends Vector<Segment>
     {
       out.addAll(bs);
     }
+    if (PAD_FRAME)
+    {
+      // Fill remaining space with 0s
+      for (int i = length; i < m_maxLength; i++)
+      {
+        out.add(false);
+      }
+    }
     return out;
   }
   
@@ -141,6 +154,13 @@ public class Frame extends Vector<Segment>
       else if (segment_type == Segment.SEGMENT_SCHEMA)
       {
         SchemaSegment seg = new SchemaSegment();
+        int read = seg.fromBitSequence(bs);
+        this.add(seg);
+        bits_read += read;
+      }
+      else if (segment_type == Segment.SEGMENT_DELTA)
+      {
+        DeltaSegment seg = new DeltaSegment();
         int read = seg.fromBitSequence(bs);
         this.add(seg);
         bits_read += read;

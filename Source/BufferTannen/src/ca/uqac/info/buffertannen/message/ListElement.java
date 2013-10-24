@@ -64,9 +64,14 @@ public class ListElement extends SchemaElement
   }
 
   @Override
-  public BitSequence toBitSequence()
+  public BitSequence toBitSequence(boolean as_delta)
   {
     BitSequence out = new BitSequence();
+    if (as_delta)
+    {
+      // Send a single 1 bit, indicating a change
+      out.add(true);
+    }
     // First append the size of the list, on 8 bits
     try
     {
@@ -354,5 +359,94 @@ public class ListElement extends SchemaElement
       }
     }
     s.truncateSubstring(index + 1);
+  }
+  
+  @Override
+  public void readContentsFromDelta(SchemaElement reference, SchemaElement delta)
+      throws ReadException
+  {
+    if (!(reference instanceof ListElement))
+    {
+      throw new ReadException("Type mismatch in reference element: expected a ListElement");
+    }
+    ListElement el = (ListElement) reference;
+    if (delta instanceof NoChangeElement)
+    {
+      // No change: copy into self value of reference list
+      for (SchemaElement list_element : el.m_contents)
+      {
+        SchemaElement element_copy = list_element.copy();
+        m_contents.add(element_copy);
+      }
+      return;
+    }
+    // Change: make sure that delta is of proper type
+    if (!(delta instanceof ListElement))
+    {
+      throw new ReadException("Type mismatch in delta element: expected a ListElement or a no-change");
+    }
+    ListElement del = (ListElement) delta;
+    // Everything OK: process each element of the list, again computing
+    // difference between matching reference and delta list items
+    int min_size = Math.min(el.m_contents.size(), del.m_contents.size());
+    for (int i = 0; i < min_size; i++)
+    {
+      SchemaElement element_to_add = m_elementType.copy();
+      SchemaElement ref_el = el.m_contents.get(i);
+      SchemaElement del_el = del.m_contents.get(i);
+      element_to_add.readContentsFromDelta(ref_el, del_el);
+      m_contents.add(element_to_add);
+    }
+  }
+  
+  /**
+   * Populates the as a difference between the element to represent,
+   * and another element to be used as a reference.
+   * <p>
+   * In the case of a list,
+   * elements from both lists are compared one by one, and their delta is
+   * computed recursively. At the end of the process, if no delta was necessary
+   * for any element, a {@link NoChangeElement} is returned in place of the
+   * list itself. If the length of the list in both operands is not equal,
+   * a {@link CannotComputeDeltaException} is thrown.
+   * @param reference The element to use as a reference
+   * @param new_one The new element
+   * @return A Schema element representing the difference between reference and new_one
+   * @throws CannotComputeDeltaException Indicates that it is not
+   *   possible to represent new_one as a delta with respect to reference.
+   *   This means that the list must be sent as a full message segment instead
+   *   of a delta segment.
+   * @throws TypeMismatchException Indicates that the declared type for list
+   *   elements in both arguments is not the same
+   */
+  protected static SchemaElement populateFromDelta(ListElement reference, ListElement new_one) throws TypeMismatchException, CannotComputeDeltaException
+  {
+    if (reference.m_contents.size() != new_one.m_contents.size())
+    {
+      throw new CannotComputeDeltaException("Sizes of lists do not match");
+    }
+    if (reference.m_elementType.getClass() != new_one.m_elementType.getClass())
+    {
+      throw new TypeMismatchException("Type of elements in lists does not match");
+    }
+    boolean contains_a_change = false;
+    ListElement out = new ListElement();
+    out.m_elementType = reference.m_elementType.copy();
+    for (int i = 0; i < reference.m_contents.size(); i++)
+    {
+      SchemaElement ref_el = reference.m_contents.get(i);
+      SchemaElement new_el = new_one.m_contents.get(i);
+      SchemaElement delta_el = SchemaElement.createFromDelta(ref_el, new_el);
+      if (!(delta_el instanceof NoChangeElement))
+      {
+        contains_a_change = true;
+      }
+      out.m_contents.add(delta_el);
+    }
+    if (!contains_a_change)
+    {
+      return new NoChangeElement();
+    }
+    return out;
   }
 }

@@ -19,6 +19,13 @@ package ca.uqac.info.buffertannen.message;
 
 import ca.uqac.info.util.MutableString;
 
+/**
+ * Main class representing all possible elements of a structured
+ * message. All concrete data structures (maps, lists, etc.) inherit
+ * from SchemaElement.
+ * @author sylvain
+ *
+ */
 public abstract class SchemaElement
 {
   
@@ -42,7 +49,17 @@ public abstract class SchemaElement
    * Writes the element's content as a sequence of bits
    * @return The sequence of bits corresponding to the element's content
    */
-  public abstract BitSequence toBitSequence();
+  public final BitSequence toBitSequence()
+  {
+    return toBitSequence(false);
+  }
+  
+  /**
+   * Writes the element's content as a sequence of bits
+   * @param as_delta Write sequence for a delta segment
+   * @return The sequence of bits corresponding to the element's content
+   */
+  public abstract BitSequence toBitSequence(boolean as_delta);
   
   /**
    * Populates an element's contents from a sequence of bits 
@@ -95,6 +112,12 @@ public abstract class SchemaElement
    */
   public abstract BitSequence schemaToBitSequence();
   
+  /**
+   * 
+   * @param bs
+   * @return
+   * @throws ReadException
+   */
   public static ElementInt bitSequenceToSchema(BitSequence bs) throws ReadException
   {
     ElementInt ei = new ElementInt();
@@ -189,6 +212,14 @@ public abstract class SchemaElement
     return out;
   }
   
+  /**
+   * Same as {@link readSchemaFromString(String)}, but for an input of type
+   * {@link MutableString} 
+   * @param s The string to read from
+   * @return The schema instance produced from the string
+   * @throws ReadException If the string does not conform to the
+   *   expected syntax
+   */
   protected abstract void readSchemaFromString(MutableString s) throws ReadException;
   
   public void readContentsFromString(String s) throws ReadException
@@ -197,22 +228,105 @@ public abstract class SchemaElement
     readContentsFromString(ms);
   }
   
+  protected static SchemaElement readContentsFromBitSequence(BitSequence bs, boolean as_delta)
+  {
+    SchemaElement out = null;
+    
+    return out;
+  }
+  
   protected abstract void readContentsFromString(MutableString s) throws ReadException;
   
+  /**
+   * Instantiates an element with the proper schema, read from a bit
+   * sequence given as input
+   * @param bs The bit sequence to read from
+   * @return The number of bits that were consumed from the input bit sequence
+   *  while reading the schema for this element. Note that these bits are
+   *  effectively <em>removed</em> from the bit sequence passed as input.
+   * @throws ReadException
+   */
   protected abstract int readSchemaFromBitSequence(BitSequence bs) throws ReadException;
+
+  /**
+   * Populates the content of an element by computing its difference ("delta")
+   * with respect to a reference element
+   * @param reference The reference element
+   * @param delta The element containing the difference
+   * @throws ReadException
+   */
+  public abstract void readContentsFromDelta(SchemaElement reference, SchemaElement delta) throws ReadException;
   
+  /**
+   * Creates an element that encodes the difference between the element to represent,
+   * and another element to be used as a reference
+   * @param reference The element to use as a reference
+   * @param new_one The new element
+   * @return A SchemaElement
+   */
+  public static SchemaElement createFromDelta(SchemaElement reference, SchemaElement new_one) throws TypeMismatchException, CannotComputeDeltaException
+  {
+    SchemaElement out = null;
+    if (reference instanceof SmallsciiElement && new_one instanceof SmallsciiElement)
+    {
+      out = SmallsciiElement.populateFromDelta((SmallsciiElement) reference, (SmallsciiElement) new_one);
+    }
+    else if (reference instanceof IntegerElement && new_one instanceof IntegerElement)
+    {
+      out = IntegerElement.populateFromDelta((IntegerElement) reference, (IntegerElement) new_one);
+    }
+    else if (reference instanceof FixedMapElement && new_one instanceof FixedMapElement)
+    {
+      out = FixedMapElement.populateFromDelta((FixedMapElement) reference, (FixedMapElement) new_one);
+    }
+    else if (reference instanceof EnumElement && new_one instanceof EnumElement)
+    {
+      out = EnumElement.populateFromDelta((EnumElement) reference, (EnumElement) new_one);
+    }
+    else if (reference instanceof ListElement && new_one instanceof ListElement)
+    {
+      out = ListElement.populateFromDelta((ListElement) reference, (ListElement) new_one);
+    }
+    if (out == null)
+    {
+      throw new TypeMismatchException();
+    }
+    return out;
+  }
+  
+  /**
+   * Utility class used by methods that need to return an element <em>and</em>
+   * a numerical value at the same time
+   * @author sylvain
+   *
+   */
   public static class ElementInt
   {
     public SchemaElement m_element;
     public int m_int;
   }
   
+  /**
+   * Finds the matching closing parenthesis/brace/bracket
+   * @param s The string to look into. It is assumed that the
+   *   first character of that string is the corresponding opening
+   *   paren/brace/bracket
+   * @return The position of the matching closing symbol in the string
+   */
   protected static int findMatchingClosing(String s)
   {
     MutableString ms = new MutableString(s);
     return findMatchingClosing(ms);    
   }
   
+  /**
+   * Similar to {@link findMatchingClosing(String)}, but for an element of
+   * type {@link MutableString}
+   * @param s The string to look into. It is assumed that the
+   *   first character of that string is the corresponding opening
+   *   paren/brace/bracket
+   * @return The position of the matching closing symbol in the string
+   */
   protected static int findMatchingClosing(MutableString s)
   {
     int level = 1, pos = 0;

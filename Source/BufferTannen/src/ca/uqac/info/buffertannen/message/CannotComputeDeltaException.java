@@ -18,42 +18,31 @@
 package ca.uqac.info.buffertannen.message;
 
 /**
- * Generic exception that carries an error message.
+ * Indicates that a delta segment could not be computed from a pair of
+ * messages.
  * @author sylvain
  *
  */
-class MessageException extends Exception
+public class CannotComputeDeltaException extends MessageException
 {
-  /**
-   * A possible error message to display
-   */
-  protected String m_message = "";
-  
-  /**
-   * A possible error message to display
-   */
-  protected String m_prefix = "";
-  
   /**
    * Dummy UID
    */
   private static final long serialVersionUID = 1L;
   
-  public MessageException(String prefix)
+  /**
+   * Message prefix 
+   */
+  protected static final String MESSAGE_PREFIX = "Cannot compute delta";
+  
+  public CannotComputeDeltaException()
   {
-    super();
-    m_prefix = prefix;
+    super(MESSAGE_PREFIX);
   }
   
-  public MessageException(String prefix, String message)
+  public CannotComputeDeltaException(String message)
   {
-    this(prefix);
-    m_message = message;
+    super(MESSAGE_PREFIX, message);
   }
   
-  @Override
-  public String getMessage()
-  {
-    return m_prefix + ": " + m_message;
-  }
 }

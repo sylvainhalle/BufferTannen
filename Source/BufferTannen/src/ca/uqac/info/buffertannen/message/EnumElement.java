@@ -48,7 +48,7 @@ public class EnumElement extends SchemaElement
   }
 
   @Override
-  public BitSequence toBitSequence()
+  public BitSequence toBitSequence(boolean as_delta)
   {
     int num_bits = (int) Math.ceil((Math.log(m_constants.size()) / LOG_2));
     int pos = m_constants.indexOf(m_value);
@@ -57,10 +57,15 @@ public class EnumElement extends SchemaElement
       // Not supposed to happen
       assert false;
     }
-    BitSequence bs = null;
+    BitSequence bs = new BitSequence();
+    if (as_delta)
+    {
+      // Send a single 1 bit, indicating a change
+      bs.add(true);
+    }
     try
     {
-      bs = new BitSequence(pos, num_bits);
+      bs.addAll(new BitSequence(pos, num_bits));
     } catch (BitFormatException e)
     {
       // Do nothing
@@ -260,6 +265,47 @@ public class EnumElement extends SchemaElement
       throw new ReadException("Enum value not in domain");
     }
     m_value = str_val;
+  }
+
+  @Override
+  public void readContentsFromDelta(SchemaElement reference, SchemaElement delta)
+      throws ReadException
+  {
+    if (!(reference instanceof EnumElement))
+    {
+      throw new ReadException("Type mismatch in reference element: expected an Enum");
+    }
+    EnumElement el = (EnumElement) reference;
+    if (delta instanceof NoChangeElement)
+    {
+      // No change: copy into self value of reference enum
+      m_value = el.m_value;
+      return;
+    }
+    // Change: make sure that delta is of proper type
+    if (!(delta instanceof EnumElement))
+    {
+      throw new ReadException("Type mismatch in delta element: expected an Enum or a no-change");
+    }
+    EnumElement del = (EnumElement) delta;
+    // Everything OK: copy value of delta into self
+    m_value = del.m_value;
+  }
+  
+  /**
+   * Populates the as a difference between the element to represent,
+   * and another element to be used as a reference
+   * @param reference The element to use as a reference
+   * @param new_one The new element
+   * @return A Schema element representing the difference between reference and new_one
+   */
+  protected static SchemaElement populateFromDelta(EnumElement reference, EnumElement new_one)
+  {
+    if (reference.m_value.compareTo(new_one.m_value) == 0)
+    {
+      return new NoChangeElement();
+    }
+    return new_one;
   }
 
 }
