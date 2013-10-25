@@ -48,8 +48,9 @@ public abstract class SchemaElement
   /**
    * Writes the element's content as a sequence of bits
    * @return The sequence of bits corresponding to the element's content
+   * @throws BitFormatException If the bit sequence cannot be created
    */
-  public final BitSequence toBitSequence()
+  public final BitSequence toBitSequence() throws BitFormatException
   {
     return toBitSequence(false);
   }
@@ -58,8 +59,9 @@ public abstract class SchemaElement
    * Writes the element's content as a sequence of bits
    * @param as_delta Write sequence for a delta segment
    * @return The sequence of bits corresponding to the element's content
+   * @throws BitFormatException If the bit sequence cannot be created
    */
-  public abstract BitSequence toBitSequence(boolean as_delta);
+  public abstract BitSequence toBitSequence(boolean as_delta) throws BitFormatException;
   
   /**
    * Populates an element's contents from a sequence of bits 
@@ -68,7 +70,20 @@ public abstract class SchemaElement
    * @throws ReadException If the contents of the element cannot be read
    *   from the bit sequence
    */
-  public abstract int fromBitSequence(BitSequence bs) throws ReadException;
+  public int fromBitSequence(BitSequence bs) throws ReadException
+  {
+    return fromBitSequence(bs, false);
+  }
+  
+  /**
+   * Populates an element's contents from a sequence of bits 
+   * @param bs The bit sequence to read from
+   * @param as_delta Whether to interpret the bit sequence as a delta segment
+   * @return The number of bits read from the sequence
+   * @throws ReadException If the contents of the element cannot be read
+   *   from the bit sequence
+   */
+  public abstract int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException;
   
   /**
    * Creates an exact copy (deep clone) of the element
@@ -228,11 +243,25 @@ public abstract class SchemaElement
     readContentsFromString(ms);
   }
   
-  protected static SchemaElement readContentsFromBitSequence(BitSequence bs, boolean as_delta)
+  public ElementInt readContentsFromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
-    SchemaElement out = null;
-    
-    return out;
+    ElementInt ei = new ElementInt();
+    if (as_delta)
+    {
+      // First, read one bit to know whether the bit sequence
+      // advertises a NoChangeElement
+      BitSequence seq_first_bit = bs.truncatePrefix(1);
+      ei.m_int++;
+      if (seq_first_bit.intValue() == 0)
+      {
+        ei.m_element = new NoChangeElement();
+        return ei;
+      }
+    }
+    // Parse contents of bit sequence normally
+    ei.m_int += fromBitSequence(bs, as_delta);
+    ei.m_element = this;
+    return ei;
   }
   
   protected abstract void readContentsFromString(MutableString s) throws ReadException;

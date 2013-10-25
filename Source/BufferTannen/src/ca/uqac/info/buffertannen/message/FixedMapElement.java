@@ -83,7 +83,7 @@ public class FixedMapElement extends SchemaElement
   }
 
   @Override
-  public BitSequence toBitSequence(boolean as_delta)
+  public BitSequence toBitSequence(boolean as_delta) throws BitFormatException
   {
     BitSequence out = new BitSequence();
     if (as_delta)
@@ -94,70 +94,24 @@ public class FixedMapElement extends SchemaElement
     for (int i = 0; i < m_keys.size(); i++)
     {
       SchemaElement value = m_values.get(i);
-      out.addAll(value.toBitSequence());
+      out.addAll(value.toBitSequence(as_delta));
     }
     return out;
   }
 
   @Override
-  public int fromBitSequence(BitSequence bs) throws ReadException
+  public int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
     int bits_read = 0;
     for (int i = 0; i < m_keys.size(); i++)
     {
       SchemaElement value = m_values.get(i);
-      int read = value.fromBitSequence(bs);
-      bits_read += read;
+      ElementInt ei = value.readContentsFromBitSequence(bs, as_delta);
+      m_values.set(i, ei.m_element);
+      bits_read += ei.m_int;
       //bs.truncatePrefix(read);
     }
     return bits_read;
-  }
-  
-  public static void main(String[] args)
-  {
-    FixedMapElement fme = new FixedMapElement();
-    FixedMapElement fme_inside = new FixedMapElement();
-    fme_inside.addToSchema("name", new SmallsciiElement());
-    fme_inside.addToSchema("type", new SmallsciiElement());
-    fme_inside.addToSchema("whatever", new SmallsciiElement());
-    fme.addToSchema("objects", fme_inside);
-    fme.addToSchema("title", new SmallsciiElement());
-    FixedMapElement instance = (FixedMapElement) fme.copy();
-    try
-    {
-      instance.put("[objects][name]", "abc");
-      instance.put("[objects][type]", "1");
-      instance.put("[objects][whatever]", "z");
-      instance.put("[title]", "hello");
-    }
-    catch (TypeMismatchException te)
-    {
-      // Do nothing
-    }
-    BitSequence bs = instance.toBitSequence();
-    System.out.println(bs.toString(6));
-    FixedMapElement instance2 = (FixedMapElement) fme.copy();
-    try
-    {
-      instance2.fromBitSequence(bs);
-    }
-    catch (ReadException e)
-    {
-      e.printStackTrace();
-    }
-    SchemaElement name = instance2.get("[objects][whatever]");
-    System.out.println(name);
-    
-    BitSequence bit_seq = fme.schemaToBitSequence();
-    try
-    {
-      @SuppressWarnings("unused")
-      ElementInt ei = SchemaElement.bitSequenceToSchema(bit_seq);
-    } catch (ReadException e)
-    {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-    }
   }
   
   public SchemaElement copy()
@@ -441,7 +395,7 @@ public class FixedMapElement extends SchemaElement
       SchemaElement del_el = del.m_values.get(i);
       SchemaElement element_to_add = ref_el.copy();
       element_to_add.readContentsFromDelta(ref_el, del_el);
-      m_values.add(element_to_add);
+      m_values.set(i, element_to_add);
     }
   }
   
@@ -478,7 +432,7 @@ public class FixedMapElement extends SchemaElement
         throw new TypeMismatchException("Maps don't have the same keys");
       }
       SchemaElement ref_val = reference.m_values.elementAt(i);
-      SchemaElement new_val = reference.m_values.elementAt(i);
+      SchemaElement new_val = new_one.m_values.elementAt(i);
       if (ref_val.getClass() != new_val.getClass())
       {
         throw new TypeMismatchException("Types for the value don't match");

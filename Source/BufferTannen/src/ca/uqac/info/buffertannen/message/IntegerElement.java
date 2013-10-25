@@ -20,7 +20,7 @@ package ca.uqac.info.buffertannen.message;
 import ca.uqac.info.util.MutableString;
 
 /**
- * Representation of an <i>n</i>-bit, positive integer
+ * Representation of an <i>n</i>-bit integer
  * @author sylvain
  *
  */
@@ -34,6 +34,12 @@ public class IntegerElement extends SchemaElement
   protected int m_range;
   
   /**
+   * The range of the integer (in bits) when expressed as a delta.
+   * Normally should be set smaller than normal range.
+   */
+  protected int m_deltaRange;
+  
+  /**
    * Default range if left unspecified
    */
   protected static final int DEFAULT_RANGE = 16;
@@ -43,6 +49,15 @@ public class IntegerElement extends SchemaElement
    * the range itself, which may be anything between 1 and 2^<sup>RANGE_WIDTH</sup>
    */
   public static final int RANGE_WIDTH = 5;
+  
+  /**
+   * Whether the integer represents a signed quantity or not.
+   * If yes, the first bit encodes the sign (0 = positive, 1 = negative),
+   * and the remaining bits encode the absolute value. This way,
+   * an unsigned (positive) integer can also be properly read
+   * if interpreted as a signed integer.
+   */
+  public boolean m_signed = false;
   
   /**
    * Maximum integer range that can be encoded with the bits
@@ -61,14 +76,17 @@ public class IntegerElement extends SchemaElement
   {
     super();
     m_range = DEFAULT_RANGE;
+    m_deltaRange = DEFAULT_RANGE;
     m_value = value;
   }
   
-  public IntegerElement(int value, int range)
+  public IntegerElement(int value, int range, int delta_range, boolean signed)
   {
     super();
     m_range = range;
     m_value = value;
+    m_deltaRange = delta_range;
+    m_signed = signed;
   }
   
   public SchemaElement get(String path)
@@ -87,11 +105,18 @@ public class IntegerElement extends SchemaElement
   
   protected String schemaToString(String indent)
   {
-    return "Integer(" + m_range + ")";
+    StringBuilder out = new StringBuilder();
+    out.append("Integer");
+    if (m_signed)
+    {
+      out.append("*");
+    }
+    out.append("(").append(m_range).append(",").append(m_deltaRange).append(")");
+    return out.toString();
   }
 
   @Override
-  public BitSequence toBitSequence(boolean as_delta)
+  public BitSequence toBitSequence(boolean as_delta) throws BitFormatException
   {
     BitSequence bs = new BitSequence();
     if (as_delta)
@@ -99,34 +124,62 @@ public class IntegerElement extends SchemaElement
       // Send a single 1 bit, indicating a change
       bs.add(true);
     }
-    try
+    if (!m_signed)
     {
       BitSequence new_bs = new BitSequence(m_value, m_range);
       bs.addAll(new_bs);
     }
-    catch (BitFormatException e)
+    else
     {
-      e.printStackTrace();
+      if (m_value < 0)
+        bs.addAll(new BitSequence("1")); // First bit indicates sign
+      else
+        bs.addAll(new BitSequence("0"));
+      // Encode absolute value over remaining bits
+      bs.addAll(new BitSequence(Math.abs(m_value), m_range - 1));
     }
     return bs;
   }
 
   @Override
-  public int fromBitSequence(BitSequence bs) throws ReadException
+  public int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
-    if (m_range > bs.size())
+    int bits_read = 0;
+    int range = m_range;
+    if (as_delta)
+    {
+      range = m_deltaRange;
+      m_signed = true; // Delta integers are always signed
+    }
+    if (range > bs.size())
     {
       throw new ReadException();
     }
-    BitSequence int_v = bs.truncatePrefix(m_range);
-    m_value = int_v.intValue();
-    return m_range;
+    if (m_signed)
+    {
+      // Number is signed: read first bit to get sign
+      BitSequence sign = bs.truncatePrefix(1);
+      int multiple = 1;
+      if (sign.intValue() == 1)
+      {
+        multiple = -1;
+      }
+      BitSequence value = bs.truncatePrefix(range - 1);
+      m_value = multiple * value.intValue();
+    }
+    else
+    {
+      BitSequence int_v = bs.truncatePrefix(range);
+      m_value = int_v.intValue();
+    }
+    bits_read += range;
+    return bits_read;
   }
 
   @Override
   public SchemaElement copy()
   {
-    IntegerElement ie = new IntegerElement(m_value, m_range);
+    IntegerElement ie = new IntegerElement(m_value, m_range, m_deltaRange, m_signed);
     return ie;
   }
 
@@ -156,6 +209,10 @@ public class IntegerElement extends SchemaElement
       out = new BitSequence(SCHEMA_INTEGER, SCHEMA_WIDTH);
       // Write range
       out.addAll(new BitSequence(m_range, RANGE_WIDTH));
+      // Write delta range
+      out.addAll(new BitSequence(m_deltaRange, RANGE_WIDTH));
+      // Write whether signed
+      out.add(m_signed);
     } 
     catch (BitFormatException e)
     {
@@ -177,6 +234,22 @@ public class IntegerElement extends SchemaElement
     data = bs.truncatePrefix(RANGE_WIDTH);
     bits_read += RANGE_WIDTH;
     m_range = data.intValue();
+    // Read delta range
+    if (bs.size() < RANGE_WIDTH)
+    {
+      throw new ReadException("Cannot read integer range");
+    }
+    data = bs.truncatePrefix(RANGE_WIDTH);
+    bits_read += RANGE_WIDTH;
+    m_deltaRange = data.intValue();
+    // Read whether integer is signed or not
+    if (bs.size() < 1)
+    {
+      throw new ReadException("Cannot read integer sign");
+    }
+    data = bs.truncatePrefix(1);
+    bits_read++;
+    m_signed = (data.intValue() == 1);
     return bits_read;
   }
   
@@ -184,6 +257,12 @@ public class IntegerElement extends SchemaElement
   protected void readSchemaFromString(MutableString s) throws ReadException
   {
     s.truncateSubstring("Integer".length());
+    if (s.startsWith("*"))
+    {
+      // Indicates a signed integer
+      m_signed = true;
+      s.truncateSubstring(1);
+    }
     if (s.startsWith("("))
     {
       // Read range if any
@@ -194,10 +273,27 @@ public class IntegerElement extends SchemaElement
       }
       MutableString sub_range = s.substring(1, index);
       s.truncateSubstring(index + 1);
-      m_range = Integer.parseInt(sub_range.toString());
+      MutableString[] parts = sub_range.split(",");
+      m_range = Integer.parseInt(parts[0].toString());
       if (m_range <= 0 || m_range >= MAX_RANGE)
       {
         throw new ReadException("Invalid range for Integer");
+      }
+      if (parts.length == 1)
+      {
+        m_deltaRange = m_range;
+      }
+      else if (parts.length == 2)
+      {
+        m_deltaRange = Integer.parseInt(parts[1].toString());
+        if (m_deltaRange <= 0 || m_deltaRange >= MAX_RANGE)
+        {
+          throw new ReadException("Invalid delta range for Integer");
+        }
+      }
+      else
+      {
+        throw new ReadException("Invalid range expression for Integer");
       }
     }
     return;
@@ -265,8 +361,10 @@ public class IntegerElement extends SchemaElement
   }
   
   /**
-   * Populates the as a difference between the element to represent,
-   * and another element to be used as a reference
+   * Populates the element's content as a difference between the element to represent,
+   * and another element to be used as a reference.
+   * <strong>Note:</strong> when represented as delta-elements, integers are always
+   * signed.
    * @param reference The element to use as a reference
    * @param new_one The new element
    * @return A Schema element representing the difference between reference and new_one
@@ -278,6 +376,6 @@ public class IntegerElement extends SchemaElement
     {
       return new NoChangeElement();
     }
-    return new IntegerElement(difference);
+    return new IntegerElement(difference, reference.m_deltaRange, reference.m_deltaRange, true);
   }
 }

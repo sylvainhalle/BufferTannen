@@ -74,7 +74,7 @@ public class EnumElement extends SchemaElement
   }
 
   @Override
-  public int fromBitSequence(BitSequence bs) throws ReadException
+  public int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
     int num_bits = (int) Math.ceil((Math.log(m_constants.size()) / LOG_2));
     if (num_bits > bs.size())
@@ -140,25 +140,6 @@ public class EnumElement extends SchemaElement
   protected String schemaToString(String indent)
   {
     return "EnumElement " + m_constants.toString();
-  }
-  
-  public static void main(String[] args)
-  {
-    EnumElement ee = new EnumElement();
-    ee.addToSchema("CONST1"); ee.addToSchema("CONST2"); ee.addToSchema("SOME OTHER");
-    EnumElement instance = (EnumElement) ee.copy();
-    instance.put("", "SOME OTHER");
-    BitSequence bs = instance.toBitSequence();
-    System.out.println(bs);
-    EnumElement ee2 = (EnumElement) ee.copy();
-    try
-    {
-      ee2.fromBitSequence(bs);
-    }
-    catch (ReadException e)
-    {
-      e.printStackTrace();
-    }
   }
   
   public BitSequence schemaToBitSequence()

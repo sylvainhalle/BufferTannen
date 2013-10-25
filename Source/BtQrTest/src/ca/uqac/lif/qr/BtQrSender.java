@@ -55,7 +55,23 @@ public class BtQrSender
       e.printStackTrace();
     }
     animator.readMessages(new File("test/pingu-trace.txt"));
-    animator.animate("test/Pingus.gif", 10);
+    int fps = 10;
+    animator.animate("test/Pingus.gif", 100/fps);
+    
+    int raw_bits = animator.m_sender.getNumberOfRawBits();
+    int total_frames = animator.m_sender.getNumberOfFrames();
+    int total_size = animator.m_sender.getNumberOfDeltaSegmentsBits() + animator.m_sender.getNumberOfMessageSegmentsBits();
+    System.err.println("Processing results               ");
+    System.err.println("----------------------------------------------------");
+    System.err.println(" Frames sent:          " + total_frames);
+    System.err.println(" Messages sent (not including retransmissions):  " + (animator.m_sender.getNumberOfMessageSegments() + animator.m_sender.getNumberOfDeltaSegments()) + " (" + total_size + " bits)");
+    System.err.println("   Message segments:   " + animator.m_sender.getNumberOfMessageSegments() + " (" + animator.m_sender.getNumberOfMessageSegmentsBits() + " bits, " + animator.m_sender.getNumberOfMessageSegmentsBits() / animator.m_sender.getNumberOfMessageSegments() + " bits/seg.)");
+    System.err.println("   Delta segments:     " + animator.m_sender.getNumberOfDeltaSegments() + " (" + animator.m_sender.getNumberOfDeltaSegmentsBits() + " bits, " + animator.m_sender.getNumberOfDeltaSegmentsBits() / animator.m_sender.getNumberOfDeltaSegments() + " bits/seg.)");
+    System.err.println("   Schema segments:    " + animator.m_sender.getNumberOfSchemaSegments() + " (" + animator.m_sender.getNumberOfSchemaSegmentsBits() + " bits, " + animator.m_sender.getNumberOfSchemaSegmentsBits() / animator.m_sender.getNumberOfSchemaSegments() + " bits/seg.)");
+    System.err.println(" Bandwidth:");
+    System.err.println("   Raw (with retrans.): "+ raw_bits + " bits (" + raw_bits * fps / total_frames + " bits/sec.)");
+    System.err.println("   Effective:           " + total_size + " bits (" + total_size * fps / total_frames + " bits/sec.)");
+    System.err.println("----------------------------------------------------\n");
   }
   
   public BtQrSender(int frame_length)
@@ -74,7 +90,7 @@ public class BtQrSender
       try
       {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        System.out.println("Written: " + bs.toString());
+        //System.out.println("Written: " + bs.toString());
         QrReadWrite.writeQrCode(out, bs.toBase64(), 300, 300, ErrorCorrectionLevel.L);
         animator.addImage(out.toByteArray());
       } catch (WriterException e)

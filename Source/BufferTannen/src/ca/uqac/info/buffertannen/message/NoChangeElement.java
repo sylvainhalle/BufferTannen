@@ -41,7 +41,7 @@ public class NoChangeElement extends SchemaElement
   }
 
   @Override
-  public int fromBitSequence(BitSequence bs) throws ReadException
+  public int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
     // Don't need to read anything
     return 0;

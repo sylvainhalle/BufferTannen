@@ -64,7 +64,7 @@ public class ListElement extends SchemaElement
   }
 
   @Override
-  public BitSequence toBitSequence(boolean as_delta)
+  public BitSequence toBitSequence(boolean as_delta) throws BitFormatException
   {
     BitSequence out = new BitSequence();
     if (as_delta)
@@ -84,14 +84,14 @@ public class ListElement extends SchemaElement
     // Then append the bit sequence of all elements
     for (SchemaElement el : m_contents)
     {
-      BitSequence bs = el.toBitSequence();
+      BitSequence bs = el.toBitSequence(as_delta);
       out.addAll(bs);
     }
     return out;
   }
 
   @Override
-  public int fromBitSequence(BitSequence bs) throws ReadException
+  public int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
     int read_bits = 0;
     if (bs.size() < MAX_LENGTH_BITS)
@@ -105,9 +105,9 @@ public class ListElement extends SchemaElement
     for (int i = 0; i < num_elements; i++)
     {
       SchemaElement new_el = m_elementType.copy();
-      int read = new_el.fromBitSequence(bs);
-      m_contents.add(new_el);
-      read_bits += read;
+      ElementInt ei = new_el.readContentsFromBitSequence(bs, as_delta);
+      m_contents.add(ei.m_element);
+      read_bits += ei.m_int;
     }
     return read_bits;
   }
@@ -395,7 +395,7 @@ public class ListElement extends SchemaElement
       SchemaElement ref_el = el.m_contents.get(i);
       SchemaElement del_el = del.m_contents.get(i);
       element_to_add.readContentsFromDelta(ref_el, del_el);
-      m_contents.add(element_to_add);
+      m_contents.set(i, element_to_add);
     }
   }
   

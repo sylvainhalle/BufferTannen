@@ -1,7 +1,7 @@
 BufferTannen: a protocol
 ========================
 
-(User Manual, version 2013-10-12)
+(User Manual, version 2013-10-25)
 
 BufferTannen is a Java software package that allows the serialization and
 transmission of structured data over limited communication channels. It is
@@ -31,6 +31,7 @@ Table of contents                                                    {#toc}
 - [Transmitting Messages](#transmitting)
 - [Encoding Details](#encoding-details)
 - [Protocol Details](#protocol-details)
+- [Delta Segments](#delta-segments)
 - [Why BufferTannen?](#why)
 - [About the Author](#about)
 
@@ -250,7 +251,12 @@ A segment can be of two types:
   with a sequential number (used to preserve the ordering of messages
   received), as well as the number referring to the schema that must be used
   to decode the message.
-- A third type of segment, *blob*, is currently left unimplemented. It is
+- A *delta segment* contains the binary representation of a message,
+  expressed as the difference ("delta") between that message and a previous
+  one used as a reference. Delta segments are used to further compress the
+  representation of a message, in the case where messages don't change much
+  over an interval of time.
+- A fourth type of segment, *blob*, is currently left unimplemented. It is
   intended to carry raw binary data over the BufferTannen protocol.
 
 The communication channel sends binary data in units called *frames*. A
@@ -321,6 +327,13 @@ TODO
 
 Protocol Details                                        {#protocol-details}
 ----------------
+
+TODO
+
+[Back to top](#toc)
+
+Delta Segments                                            {#delta-segments}
+---------------
 
 TODO
 

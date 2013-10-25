@@ -44,7 +44,7 @@ public class Frame extends Vector<Segment>
   /**
    * Whether to pad a frame with zeros to always reach the maximum size
    */
-  protected static final boolean PAD_FRAME = true;
+  protected static final boolean PAD_FRAME = false;
   
   /**
    * Number of bits used to encode the frame length.

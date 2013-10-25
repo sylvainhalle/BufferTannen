@@ -98,7 +98,7 @@ public class SmallsciiElement extends StringElement
     return bs;
   }
   
-  public int fromBitSequence(BitSequence bs) throws ReadException
+  public int fromBitSequence(BitSequence bs, boolean as_delta) throws ReadException
   {
     StringBuilder sb = new StringBuilder();
     int bits_read = 0;
@@ -138,22 +138,6 @@ public class SmallsciiElement extends StringElement
     else if (value instanceof String)
     {
       m_contents = (String) value;
-    }
-  }
-  
-  public static void main(String[] args)
-  {
-    SmallsciiElement el = new SmallsciiElement("Hello");
-    BitSequence bs = el.toBitSequence();
-    System.out.println(bs.toString(6));
-    SmallsciiElement el2 = new SmallsciiElement();
-    try
-    {
-      el2.fromBitSequence(bs);
-    } catch (ReadException e)
-    {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
     }
   }
   

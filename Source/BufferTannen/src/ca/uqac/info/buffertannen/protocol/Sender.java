@@ -12,7 +12,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
+    You should have Sent a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  -------------------------------------------------------------------------*/
 package ca.uqac.info.buffertannen.protocol;
@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 
+import ca.uqac.info.buffertannen.message.BitFormatException;
 import ca.uqac.info.buffertannen.message.BitSequence;
 import ca.uqac.info.buffertannen.message.CannotComputeDeltaException;
 import ca.uqac.info.buffertannen.message.ReadException;
@@ -53,7 +54,7 @@ public class Sender
    * segments sent. Set to 0 for no periodical broadcast at all.
    * If used, this value should be lower than {@Sender.m_repeatAfterN},
    * so that a schema retransmission always occurs between the time
-   * a segment is received and the time where it is declared lost.
+   * a segment is Sent and the time where it is declared lost.
    */
   protected int m_broadcastSchemasEveryN = 10;
   
@@ -80,7 +81,7 @@ public class Sender
   /**
    * The number of delta segments sent since the last message segment
    */
-  protected int m_deltaSegmentsSent = -1;
+  protected int m_deltaSegmentsSentSinceLast = -1;
   
   /**
    * The segment sequence number of the last message sent as a
@@ -94,6 +95,103 @@ public class Sender
    * segment.
    */
   protected SchemaElement m_lastFullMessageSent = null;
+  
+  /* --- Various statistics about segments Sent --- */
+
+  /**
+   * Number of frames sent
+   */
+  protected int m_framesSent = 0;
+  
+  /**
+   * Number of raw bits sent (including repetitions of segments)
+   */
+  protected int m_rawBitsSent = 0;
+  
+  /**
+   * Number of bits Sent as schema segments
+   */
+  protected int m_schemaSegmentBitsSent = 0;
+  
+  /**
+   * Number of bits Sent as message segments
+   */
+  protected int m_messageSegmentBitsSent = 0;
+  
+  /**
+   * Number of bits Sent as delta segments
+   */
+  protected int m_deltaSegmentBitsSent = 0;
+  
+  /**
+   * Number of bits Sent in <em>distinct</em> schema segments
+   */
+  protected int m_schemaSegmentDistinctBitsSent = 0;
+  
+  /**
+   * Number of bits Sent in <em>distinct</em> message segments
+   */
+  protected int m_messageSegmentDistinctBitsSent = 0;
+  
+  /**
+   * Number of bits Sent in <em>distinct</em> delta segments
+   */
+  protected int m_deltaSegmentDistinctBitsSent = 0;
+  
+  /**
+   * Number of schema segments Sent
+   */
+  protected int m_schemaSegmentsSent = 0;
+  
+  /**
+   * Number of message segments Sent
+   */
+  protected int m_messageSegmentsSent = 0;
+  
+  /**
+   * Number of delta segments Sent
+   */
+  protected int m_deltaSegmentsSent = 0;
+  
+  public int getNumberOfMessageSegments()
+  {
+    return m_messageSegmentsSent;
+  }
+  
+  public int getNumberOfSchemaSegments()
+  {
+    return m_schemaSegmentsSent;
+  }
+  
+  public int getNumberOfDeltaSegments()
+  {
+    return m_deltaSegmentsSent;
+  }
+  
+  public int getNumberOfMessageSegmentsBits()
+  {
+    return m_messageSegmentBitsSent;
+  }
+  
+  public int getNumberOfSchemaSegmentsBits()
+  {
+    return m_schemaSegmentBitsSent;
+  }
+  
+  public int getNumberOfDeltaSegmentsBits()
+  {
+    return m_deltaSegmentBitsSent;
+  }
+  
+  public int getNumberOfRawBits()
+  {
+    return m_rawBitsSent;
+  }
+  
+  public int getNumberOfFrames()
+  {
+    return m_framesSent;
+  }
   
   
   public Sender()
@@ -135,6 +233,7 @@ public class Sender
     {
       return null;
     }
+    m_framesSent++;
     return f.toBitSequence();
   }
   
@@ -169,6 +268,7 @@ public class Sender
         f.add(seg);
       }
     }
+    m_rawBitsSent += total_size;
     return f;
   }
   
@@ -195,7 +295,7 @@ public class Sender
   {
     // Create frame with message
     MessageSegment ms = null; 
-    if (!(force_full || m_deltaSegmentsSent == -1 || m_deltaSegmentsSent > m_deltaSegmentInterval || m_lastFullMessageSent == null))
+    if (!(force_full || m_deltaSegmentsSentSinceLast == -1 || m_deltaSegmentsSentSinceLast > m_deltaSegmentInterval || m_lastFullMessageSent == null))
     {
       // We can afford to send a delta-segment instead
       ms = new DeltaSegment();
@@ -217,10 +317,24 @@ public class Sender
         // (below)
         ms = null;
       }
-      if (delta != null)
+      BitSequence out = null;
+      try
       {
-        ms.setContents(delta.toBitSequence(true));
+        out = delta.toBitSequence(true);
+      }
+      catch (BitFormatException e1)
+      {
+        // Cannot output delta as a bit sequence: happens when some
+        // integer element varies by more than its allowed range
+        // Set ms back to null so as to force creation of a complete message segment
+        ms = null;
+      }
+      if (ms != null)
+      {
+        ms.setContents(out);
+        m_deltaSegmentsSentSinceLast++;
         m_deltaSegmentsSent++;
+        m_deltaSegmentBitsSent += out.size();
       }
     }
     if (ms == null)
@@ -228,10 +342,19 @@ public class Sender
       // It is time to create a message segment
       ms = new MessageSegment();
       ms.setSchemaNumber(number);
-      ms.setContents(e.toBitSequence());
-      m_deltaSegmentsSent = 0;
+      try
+      {
+        ms.setContents(e.toBitSequence());
+      } catch (BitFormatException e1)
+      {
+        // TODO Auto-generated catch block
+        e1.printStackTrace();
+      }
+      m_deltaSegmentsSentSinceLast = 0;
       m_lastFullMessageSent = e;
       m_lastFullMessageSentNumber = m_sequenceNumber;
+      m_messageSegmentsSent++;
+      m_messageSegmentBitsSent += ms.getSize();
     }
     ms.setSequenceNumber(m_sequenceNumber);
     // Add to buffer
@@ -308,6 +431,9 @@ public class Sender
     ss.setSchema(m_schemas.get(number));
     // Add to buffer
     m_segmentBuffer.add(ss);
+    m_schemaSegmentsSent++;
+    int seg_size = ss.getSize();
+    m_schemaSegmentBitsSent += seg_size;
   }
   
   /**

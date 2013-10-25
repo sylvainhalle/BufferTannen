@@ -40,9 +40,14 @@ public class Receiver
   protected LinkedList<Segment> m_receivedSegments;
 
   /**
-   * A buffer of reference message segments received (used to process delta-segments)
+   * A buffer of reference messages received (used to process delta-segments)
    */
-  protected Map<Integer,MessageSegment> m_referenceSegments;
+  protected Map<Integer,SchemaElement> m_referenceMessages;
+  
+  /**
+   * A buffer of reference schema elements received (used to process delta-segments)
+   */
+  protected Map<Integer,SchemaElement> m_referenceSchemas;
 
   /**
    * A list that will contain the received messages,
@@ -73,6 +78,11 @@ public class Receiver
    * The bank of schemas to interpret the messages
    */
   protected Map<Integer,SchemaElement> m_schemas;
+  
+  /**
+   * Verbosity for standard out; a value of 0 won't print anything
+   */
+  protected int m_verbosity = 0;
   
   /* --- Various statistics about segments received --- */
   
@@ -126,7 +136,8 @@ public class Receiver
     super();
     m_schemas = new HashMap<Integer,SchemaElement>();
     m_receivedSegments = new LinkedList<Segment>();
-    m_referenceSegments = new HashMap<Integer,MessageSegment>();
+    m_referenceMessages = new HashMap<Integer,SchemaElement>();
+    m_referenceSchemas = new HashMap<Integer,SchemaElement>();
     m_receivedMessages = new LinkedList<SchemaElement>();
   }
 
@@ -164,6 +175,11 @@ public class Receiver
   {
     return m_deltaSegmentBitsReceived;
   }
+  
+  public int getNumberOfRawBits()
+  {
+    return m_deltaSegmentBitsReceived + m_schemaSegmentBitsReceived + m_messageSegmentBitsReceived;
+  }
 
   public void putBitSequence(BitSequence bs)
   {
@@ -178,6 +194,14 @@ public class Receiver
     }
     putFrame(f);
   }
+  
+  protected void printMessage(String message, int verbosity_level)
+  {
+    if (m_verbosity >= verbosity_level)
+    {
+      System.err.println(message);
+    }
+  }
 
   protected void putFrame(Frame f)
   {
@@ -189,21 +213,21 @@ public class Receiver
         SchemaElement se = ((SchemaSegment) seg).getSchema();
         int s_number = ((SchemaSegment) seg).getSchemaNumber();
         m_schemas.put(s_number, se);
-        System.err.println("Received schema " + s_number);
+        printMessage("Received schema " + s_number, 2);
         m_schemaSegmentsReceived++;
         m_schemaSegmentBitsReceived += seg.getSize();
       }
       else if (seg instanceof DeltaSegment) // Must appear first, as DeltaSegment is a child of MessageSegment
       {
         DeltaSegment ds = (DeltaSegment) seg;
-        System.err.println("Received delta segment " + seg.getSequenceNumber() + " referring to segment " + ds.getDeltaToWhat());
+        printMessage("Received delta segment " + seg.getSequenceNumber() + " referring to segment " + ds.getDeltaToWhat(), 2);
         insertSegment(seg);
         m_deltaSegmentsReceived++;
         m_deltaSegmentBitsReceived += seg.getSize();
       }
       else if (seg instanceof MessageSegment)
       {
-        System.err.println("Received message segment " + seg.getSequenceNumber());
+        printMessage("Received message segment " + seg.getSequenceNumber(), 2);
         insertSegment(seg);
         m_messageSegmentsReceived++;
         m_messageSegmentBitsReceived += seg.getSize();
@@ -221,7 +245,7 @@ public class Receiver
     {
       Segment min_seg = m_receivedSegments.peekFirst();
       m_expectedSequenceNumber = min_seg.getSequenceNumber();
-      System.err.println("Setting sequence number to " + m_expectedSequenceNumber);
+      printMessage("Setting sequence number to " + m_expectedSequenceNumber, 2);
     }
     // Compute difference between highest and lowest sequence number
     int force_send = 0;
@@ -252,13 +276,13 @@ public class Receiver
         DeltaSegment ds = (DeltaSegment) seg;
         int ref_segment_no = ds.getDeltaToWhat();
         // We can process delta segments only if we have the reference segment AND the schema
-        if (!m_referenceSegments.containsKey(ref_segment_no) || !m_schemas.containsKey(m_referenceSegments.get(ref_segment_no).getSchemaNumber()))
+        if (!m_referenceMessages.containsKey(ref_segment_no) || !m_referenceSchemas.containsKey(ref_segment_no))
         {
-          if (!m_referenceSegments.containsKey(ref_segment_no))
+          if (!m_referenceMessages.containsKey(ref_segment_no))
           {
             System.err.println("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference segment " + ref_segment_no);
           }
-          else if (!m_schemas.containsKey(m_referenceSegments.get(ref_segment_no).getSchemaNumber()))
+          else if (!m_schemas.containsKey(m_referenceSchemas.get(ref_segment_no)))
           {
             System.err.println("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference schema");
           }
@@ -275,22 +299,20 @@ public class Receiver
           }
           break;
         }
-        MessageSegment reference_segment = m_referenceSegments.get(ref_segment_no);
-        SchemaElement reference_schema = m_schemas.get(reference_segment.getSchemaNumber());
-        SchemaElement reference_element = reference_schema.copy();
+        SchemaElement reference_schema = m_referenceSchemas.get(ref_segment_no);
+        SchemaElement reference_element = m_referenceMessages.get(ref_segment_no).copy();
         SchemaElement delta_element = reference_schema.copy();
         SchemaElement se = reference_schema.copy();
-        BitSequence reference_element_sequence = reference_segment.getContents();
         BitSequence bs = ds.getContents();
         try
         {
-          reference_element.fromBitSequence(reference_element_sequence);
-          delta_element.fromBitSequence(bs);
+          SchemaElement.ElementInt ei = delta_element.readContentsFromBitSequence(bs, true);
+          delta_element = ei.m_element;
           se.readContentsFromDelta(reference_element, delta_element);
         }
         catch (ReadException re)
         {
-          System.err.println("Failed to decode segment " + seq_no);
+          printMessage("Failed to decode delta segment " + seq_no, 1);
           re.printStackTrace();
           
           // We failed to decode the message: perhaps the schema is outdated
@@ -312,9 +334,9 @@ public class Receiver
         {
           // ...but we were forced to
           m_messagesLost += (seq_no - m_expectedSequenceNumber);
-          System.err.println("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages");
+          printMessage("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages", 2);
         }
-        System.err.println("Successfully processed delta segment " + seq_no);
+        printMessage("Successfully processed delta segment " + seq_no, 2);
         m_receivedMessages.add(se);
         m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
         m_receivedSegments.removeFirst();
@@ -340,6 +362,7 @@ public class Receiver
           }
           break;
         }
+        SchemaElement ref_schema = m_schemas.get(s_number).copy();
         SchemaElement se = m_schemas.get(s_number).copy();
         BitSequence bs = ms.getContents();
         try
@@ -364,10 +387,11 @@ public class Receiver
         {
           // ...but we were forced to
           m_messagesLost += (seq_no - m_expectedSequenceNumber);
-          System.err.println("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages");
+          printMessage("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages", 2);
         }
-        m_referenceSegments.put(seq_no, ms);
-        System.err.println("Successfully processed segment " + seq_no);
+        m_referenceMessages.put(seq_no, se);
+        m_referenceSchemas.put(seq_no, ref_schema);
+        printMessage("Successfully processed message segment " + seq_no, 2);
         m_receivedMessages.add(se);
         m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
         m_receivedSegments.removeFirst();
@@ -403,7 +427,7 @@ public class Receiver
     if (seq_no < m_expectedSequenceNumber)
     {
       // This segment is a repetition of one we already processed: ignore
-      System.err.println("Segment already seen: " + seq_no);
+      printMessage("Segment already seen: " + seq_no, 2);
       return;
     }
     if (m_receivedSegments.isEmpty())
@@ -432,7 +456,7 @@ public class Receiver
       else if (cur_no == seq_no)
       {
         // This segment is already in the buffer: ignore
-        System.err.println("Segment already in buffer: " + seq_no);
+        printMessage("Segment already in buffer: " + seq_no, 2);
         added = true;
         break;
       }
@@ -453,12 +477,12 @@ public class Receiver
   protected void addSegment(int position, Segment seg)
   {
     m_receivedSegments.add(position, seg);
-    if (seg instanceof MessageSegment)
+    /*if (seg instanceof MessageSegment)
     {
       // Add segment to reference segments
       MessageSegment ms = (MessageSegment) seg;
       m_referenceSegments.put(ms.getSequenceNumber(), ms);
-    }
+    }*/
   }
 
   /**
@@ -470,12 +494,12 @@ public class Receiver
   protected void addSegment(Segment seg)
   {
     m_receivedSegments.add(seg);
-    if (seg instanceof MessageSegment)
+    /*if (seg instanceof MessageSegment)
     {
       // Add segment to reference segments
       MessageSegment ms = (MessageSegment) seg;
-      m_referenceSegments.put(ms.getSequenceNumber(), ms);
-    }
+      m_referenceMessages.put(ms.getSequenceNumber(), ((MessageSegment) seg).getContents());
+    }*/
   }
 
   /**
@@ -487,12 +511,12 @@ public class Receiver
   protected void addSegmentLast(Segment seg)
   {
     m_receivedSegments.addLast(seg);
-    if (seg instanceof MessageSegment)
+    /*if (seg instanceof MessageSegment)
     {
       // Add segment to reference segments
       MessageSegment ms = (MessageSegment) seg;
       m_referenceSegments.put(ms.getSequenceNumber(), ms);
-    }
+    }*/
   }
 
   public SchemaElement pollMessage()
