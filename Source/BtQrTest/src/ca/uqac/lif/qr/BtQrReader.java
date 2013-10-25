@@ -152,6 +152,14 @@ public class BtQrReader
             .create();
     options.addOption(opt);
     opt = OptionBuilder
+        .withLongOpt("output")
+        .withArgName("file")
+        .hasArg()
+        .withDescription(
+            "Output GIF animation to file")
+            .create();
+    options.addOption(opt);
+    opt = OptionBuilder
         .withLongOpt("verbosity")
         .withArgName("x")
         .hasArg()
@@ -392,8 +400,6 @@ public class BtQrReader
       System.err.println("Trace filename must be provided");
       System.exit(ERR_ARGUMENTS);
     }
-    trace_filename = remaining_args.get(1);
-    animator.readMessages(new File(trace_filename));
     if (remaining_args.size() > 2)
     {
       // All remaining arguments are schema files
@@ -414,6 +420,8 @@ public class BtQrReader
         }
       }
     }
+    trace_filename = remaining_args.get(1);
+    animator.readMessages(new File(trace_filename));
     animator.animate(output_filename, 100/fps, image_size);
     
     int raw_bits = animator.m_sender.getNumberOfRawBits();
