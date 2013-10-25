@@ -87,6 +87,11 @@ public class Receiver
   /* --- Various statistics about segments received --- */
   
   /**
+   * Number of raw bits received (including retransmissions)
+   */
+  protected int m_rawBitsReceived = 0;
+  
+  /**
    * Number of bits received as schema segments
    */
   protected int m_schemaSegmentBitsReceived = 0;
@@ -178,12 +183,18 @@ public class Receiver
   
   public int getNumberOfRawBits()
   {
+    return m_rawBitsReceived;
+  }
+  
+  public int getNumberOfDistinctBits()
+  {
     return m_deltaSegmentBitsReceived + m_schemaSegmentBitsReceived + m_messageSegmentBitsReceived;
   }
 
   public void putBitSequence(BitSequence bs)
   {
     Frame f = new Frame();
+    m_rawBitsReceived += bs.size();
     try
     {
       f.fromBitSequence(bs);
@@ -222,15 +233,11 @@ public class Receiver
         DeltaSegment ds = (DeltaSegment) seg;
         printMessage("Received delta segment " + seg.getSequenceNumber() + " referring to segment " + ds.getDeltaToWhat(), 2);
         insertSegment(seg);
-        m_deltaSegmentsReceived++;
-        m_deltaSegmentBitsReceived += seg.getSize();
       }
       else if (seg instanceof MessageSegment)
       {
         printMessage("Received message segment " + seg.getSequenceNumber(), 2);
         insertSegment(seg);
-        m_messageSegmentsReceived++;
-        m_messageSegmentBitsReceived += seg.getSize();
       }
     }
     if (m_receivedSegments.isEmpty())
@@ -304,6 +311,7 @@ public class Receiver
         SchemaElement delta_element = reference_schema.copy();
         SchemaElement se = reference_schema.copy();
         BitSequence bs = ds.getContents();
+        int bits_received = bs.size();
         try
         {
           SchemaElement.ElementInt ei = delta_element.readContentsFromBitSequence(bs, true);
@@ -337,6 +345,8 @@ public class Receiver
           printMessage("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages", 2);
         }
         printMessage("Successfully processed delta segment " + seq_no, 2);
+        m_deltaSegmentBitsReceived += bits_received;
+        m_deltaSegmentsReceived++;
         m_receivedMessages.add(se);
         m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
         m_receivedSegments.removeFirst();
@@ -365,6 +375,7 @@ public class Receiver
         SchemaElement ref_schema = m_schemas.get(s_number).copy();
         SchemaElement se = m_schemas.get(s_number).copy();
         BitSequence bs = ms.getContents();
+        int bits_received = bs.size();
         try
         {
           se.fromBitSequence(bs);
@@ -392,6 +403,8 @@ public class Receiver
         m_referenceMessages.put(seq_no, se);
         m_referenceSchemas.put(seq_no, ref_schema);
         printMessage("Successfully processed message segment " + seq_no, 2);
+        m_messageSegmentBitsReceived += bits_received;
+        m_messageSegmentsReceived++;
         m_receivedMessages.add(se);
         m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
         m_receivedSegments.removeFirst();

@@ -22,7 +22,6 @@ import java.io.File;
 import java.io.IOException;
 
 import com.google.zxing.WriterException;
-import com.google.zxing.datamatrix.encoder.ErrorCorrection;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 
 import ca.uqac.info.buffertannen.message.*;
@@ -33,46 +32,6 @@ public class BtQrSender
 {
   
   Sender m_sender;
-
-  /**
-   * @param args
-   */
-  public static void main(String[] args)
-  {
-    BtQrSender animator = new BtQrSender(2000);
-    try
-    {
-      animator.setSchema(0, new File("test/Pingus-Schema-1.txt"));
-      animator.setSchema(1, new File("test/Pingus-Schema-2.txt"));
-    }
-    catch (IOException ioe)
-    {
-      // TODO Auto-generated catch block
-      ioe.printStackTrace();      
-    } catch (ReadException e)
-    {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-    }
-    animator.readMessages(new File("test/pingu-trace.txt"));
-    int fps = 10;
-    animator.animate("test/Pingus.gif", 100/fps);
-    
-    int raw_bits = animator.m_sender.getNumberOfRawBits();
-    int total_frames = animator.m_sender.getNumberOfFrames();
-    int total_size = animator.m_sender.getNumberOfDeltaSegmentsBits() + animator.m_sender.getNumberOfMessageSegmentsBits();
-    System.err.println("Processing results               ");
-    System.err.println("----------------------------------------------------");
-    System.err.println(" Frames sent:          " + total_frames);
-    System.err.println(" Messages sent (not including retransmissions):  " + (animator.m_sender.getNumberOfMessageSegments() + animator.m_sender.getNumberOfDeltaSegments()) + " (" + total_size + " bits)");
-    System.err.println("   Message segments:   " + animator.m_sender.getNumberOfMessageSegments() + " (" + animator.m_sender.getNumberOfMessageSegmentsBits() + " bits, " + animator.m_sender.getNumberOfMessageSegmentsBits() / animator.m_sender.getNumberOfMessageSegments() + " bits/seg.)");
-    System.err.println("   Delta segments:     " + animator.m_sender.getNumberOfDeltaSegments() + " (" + animator.m_sender.getNumberOfDeltaSegmentsBits() + " bits, " + animator.m_sender.getNumberOfDeltaSegmentsBits() / animator.m_sender.getNumberOfDeltaSegments() + " bits/seg.)");
-    System.err.println("   Schema segments:    " + animator.m_sender.getNumberOfSchemaSegments() + " (" + animator.m_sender.getNumberOfSchemaSegmentsBits() + " bits, " + animator.m_sender.getNumberOfSchemaSegmentsBits() / animator.m_sender.getNumberOfSchemaSegments() + " bits/seg.)");
-    System.err.println(" Bandwidth:");
-    System.err.println("   Raw (with retrans.): "+ raw_bits + " bits (" + raw_bits * fps / total_frames + " bits/sec.)");
-    System.err.println("   Effective:           " + total_size + " bits (" + total_size * fps / total_frames + " bits/sec.)");
-    System.err.println("----------------------------------------------------\n");
-  }
   
   public BtQrSender(int frame_length)
   {
@@ -81,7 +40,7 @@ public class BtQrSender
     m_sender.setFrameMaxLength(frame_length);
   }
   
-  protected void animate(String out_filename, int frame_rate)
+  protected void animate(String out_filename, int frame_rate, int image_size)
   {
     GifAnimator animator = new GifAnimator();
     BitSequence bs = m_sender.pollBitSequence();
@@ -91,7 +50,7 @@ public class BtQrSender
       {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         //System.out.println("Written: " + bs.toString());
-        QrReadWrite.writeQrCode(out, bs.toBase64(), 300, 300, ErrorCorrectionLevel.L);
+        QrReadWrite.writeQrCode(out, bs.toBase64(), image_size, image_size, ErrorCorrectionLevel.L);
         animator.addImage(out.toByteArray());
       } catch (WriterException e)
       {

@@ -266,9 +266,9 @@ public class Sender
       {
         m_segmentBuffer.removeFirst();
         f.add(seg);
+        m_rawBitsSent += segment_size;
       }
     }
-    m_rawBitsSent += total_size;
     return f;
   }
   
