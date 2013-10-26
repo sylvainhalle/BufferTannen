@@ -17,6 +17,7 @@
  -------------------------------------------------------------------------*/
 package ca.uqac.info.buffertannen.protocol;
 
+import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -135,6 +136,13 @@ public class Receiver
    * Number of delta segments received
    */
   protected int m_deltaSegmentsReceived = 0;
+  
+  /**
+   * The print stream to output messages from the receiver
+   * (typically System.out or System.err, or null to
+   * disable printing)
+   */
+  protected PrintStream m_console = null;
 
   public Receiver()
   {
@@ -206,12 +214,31 @@ public class Receiver
     putFrame(f);
   }
   
+  /**
+   * Sets the print stream to send messages to
+   * @param out A print stream (typically <tt>System.err</tt> or
+   * <tt>System.out</tt>, null to disable messages
+   */
+  public void setConsole(PrintStream out)
+  {
+    m_console = out;
+  }
+  
   protected void printMessage(String message, int verbosity_level)
   {
-    if (m_verbosity >= verbosity_level)
+    if (m_console != null && m_verbosity >= verbosity_level)
     {
-      System.err.println(message);
+      m_console.println(message);
     }
+  }
+  
+  /**
+   * Sets the verbosity level of the receiver
+   * @param level The verbosity level
+   */
+  public void setVerbosity(int level)
+  {
+    m_verbosity = level;
   }
 
   protected void putFrame(Frame f)
@@ -287,11 +314,11 @@ public class Receiver
         {
           if (!m_referenceMessages.containsKey(ref_segment_no))
           {
-            System.err.println("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference segment " + ref_segment_no);
+            printMessage("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference segment " + ref_segment_no, 2);
           }
           else if (!m_schemas.containsKey(m_referenceSchemas.get(ref_segment_no)))
           {
-            System.err.println("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference schema");
+            printMessage("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference schema", 2);
           }
           // We are missing one of them: cannot process any further segment
           if (seq_no < force_send)
@@ -299,8 +326,9 @@ public class Receiver
             // We are forced to handle this segment
             // Since we can't decode it, we discard it and increment
             // the count of lost segments
+            printMessage("Delta segment " + seq_no + " declared lost", 2);
             m_receivedSegments.removeFirst();
-            m_messagesLost += (seq_no - m_expectedSequenceNumber);
+            m_messagesLost += Math.abs(seq_no - m_expectedSequenceNumber + 1);
             m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
             continue;
           }
@@ -329,8 +357,9 @@ public class Receiver
             // We are forced to handle this segment
             // Since we can't decode it, we discard it and increment
             // the count of lost segments
+            printMessage("Message segment " + seq_no + " declared lost", 2);
             m_receivedSegments.removeFirst();
-            m_messagesLost += (seq_no - m_expectedSequenceNumber);
+            m_messagesLost += Math.abs(seq_no - m_expectedSequenceNumber + 1);
             m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
             continue;
           }
@@ -366,7 +395,7 @@ public class Receiver
             // Since we can't decode it, we discard it and increment
             // the count of lost segments
             m_receivedSegments.removeFirst();
-            m_messagesLost += (seq_no - m_expectedSequenceNumber);
+            m_messagesLost += Math.abs(seq_no - m_expectedSequenceNumber);
             m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
             continue;
           }
