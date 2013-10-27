@@ -163,6 +163,12 @@ public class Sender
   protected boolean m_emptyBufferIsEof = true;
   
   /**
+   * The size of the output buffer (of awaiting segments to be
+   * sent) in bits
+   */
+  protected int m_bufferSizeBits = 0;
+  
+  /**
    * Determines the behaviour of the sender when the frame
    * buffer is empty.
    * @param b If set to true, an empty frame buffer means that the
@@ -214,6 +220,16 @@ public class Sender
   public int getNumberOfFrames()
   {
     return m_framesSent;
+  }
+  
+  public int getBufferSizeBits()
+  {
+    return m_bufferSizeBits;
+  }
+  
+  public int getBufferSizeSegments()
+  {
+    return m_segmentBuffer.size();
   }
   
   
@@ -296,6 +312,7 @@ public class Sender
         m_segmentBuffer.removeFirst();
         f.add(seg);
         m_rawBitsSent += segment_size;
+        m_bufferSizeBits -= segment_size;
       }
     }
     return f;
@@ -364,6 +381,7 @@ public class Sender
         m_deltaSegmentsSentSinceLast++;
         m_deltaSegmentsSent++;
         m_deltaSegmentBitsSent += out.size();
+        m_bufferSizeBits += ms.getSize();
       }
     }
     if (ms == null)
@@ -383,7 +401,9 @@ public class Sender
       m_lastFullMessageSent = e;
       m_lastFullMessageSentNumber = m_sequenceNumber;
       m_messageSegmentsSent++;
-      m_messageSegmentBitsSent += ms.getSize();
+      int mssize = ms.getSize();
+      m_messageSegmentBitsSent += mssize;
+      m_bufferSizeBits += mssize;
     }
     ms.setSequenceNumber(m_sequenceNumber);
     // Add to buffer
@@ -407,6 +427,7 @@ public class Sender
         {
           // Time to repeat the segment
           m_segmentBuffer.add(seg_to_rep);
+          m_bufferSizeBits += seg_to_rep.getSize();
           m_segmentToRepeatBuffer.removeFirst();
         }
         else 
@@ -472,6 +493,7 @@ public class Sender
     m_schemaSegmentsSent++;
     int seg_size = ss.getSize();
     m_schemaSegmentBitsSent += seg_size;
+    m_bufferSizeBits += seg_size;
   }
   
   /**
