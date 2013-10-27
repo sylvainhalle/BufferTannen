@@ -153,6 +153,29 @@ public class Sender
    */
   protected int m_deltaSegmentsSent = 0;
   
+  /**
+   * If set to true, an empty frame buffer means that the
+   * transmission is over. Otherwise, an empty buffer simply
+   * means that there is no data to send <em>at the moment</em>.
+   * In such an event, the sender will then take this free
+   * time to repeatedly send schema segments.
+   */
+  protected boolean m_emptyBufferIsEof = true;
+  
+  /**
+   * Determines the behaviour of the sender when the frame
+   * buffer is empty.
+   * @param b If set to true, an empty frame buffer means that the
+   * transmission is over. Otherwise, an empty buffer simply
+   * means that there is no data to send <em>at the moment</em>.
+   * In such an event, the sender will then take this free
+   * time to repeatedly send schema segments.
+   */
+  public void setEmptyBufferIsEof(boolean b)
+  {
+    m_emptyBufferIsEof = b;
+  }
+  
   public int getNumberOfMessageSegments()
   {
     return m_messageSegmentsSent;
@@ -240,13 +263,19 @@ public class Sender
   /**
    * Polls the sender's output buffer and returns the first
    * frame of that buffer, if any exists 
-   * @return The first frame in the buffer, null if buffer is empty 
+   * @return The first frame in the buffer, null if buffer is empty,
+   *   or otherwise a schema segment (see {@link #setEmptyBufferIsEof(boolean)}
    */
   public Frame pollBuffer()
   {
     if (m_segmentBuffer.isEmpty())
     {
-      return null;
+      if (m_emptyBufferIsEof)
+        return null;
+      else
+      {
+        insertPeriodicalSchemaMessage();
+      }
     }
     // Create a frame by packing as many pending segments as possible
     // within frame size limits
@@ -366,16 +395,7 @@ public class Sender
     if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 0)
     {
       // It's time to broadcast a schema
-      while (!m_schemas.isEmpty())
-      {
-        m_lastSchemaSent = (m_lastSchemaSent + 1) % SchemaSegment.SCHEMA_NUMBER_MAX;
-        if (!m_schemas.containsKey(m_lastSchemaSent))
-        {
-          continue;
-        }
-        addSchemaMessage(m_lastSchemaSent);
-        break;
-      }
+      insertPeriodicalSchemaMessage();
     }
     if (m_repeatAfterN > 0)
     {
@@ -396,6 +416,24 @@ public class Sender
           break;
         }
       }
+    }
+  }
+  
+  /**
+   * Inserts a schema message, by cycling every time through every
+   * schema
+   */
+  protected void insertPeriodicalSchemaMessage()
+  {
+    while (!m_schemas.isEmpty())
+    {
+      m_lastSchemaSent = (m_lastSchemaSent + 1) % SchemaSegment.SCHEMA_NUMBER_MAX;
+      if (!m_schemas.containsKey(m_lastSchemaSent))
+      {
+        continue;
+      }
+      addSchemaMessage(m_lastSchemaSent);
+      break;
     }
   }
   
