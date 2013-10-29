@@ -297,6 +297,7 @@ public class Sender
     // within frame size limits
     int total_size = 0;
     Frame f = new Frame();
+    f.setMaxLength(m_maxFrameLength);
     while (total_size < m_maxFrameLength && !m_segmentBuffer.isEmpty())
     {
       Segment seg = m_segmentBuffer.getFirst();

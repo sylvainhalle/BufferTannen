@@ -19,8 +19,7 @@ package ca.uqac.info.buffertannen.message;
 
 import java.util.Vector;
 
-import com.sun.org.apache.xml.internal.security.exceptions.Base64DecodingException;
-import com.sun.org.apache.xml.internal.security.utils.Base64;
+import org.apache.commons.codec.binary.Base64;
 
 /**
  * Representation of a sequence of bits. This sequence can be converted
@@ -264,9 +263,9 @@ public class BitSequence extends Vector<Boolean>
    * @throws BitFormatException 
    * @throws Base64DecodingException 
    */
-  public void fromBase64(String s) throws BitFormatException, Base64DecodingException
+  public void fromBase64(String s) throws BitFormatException
   {
-    byte[] data = Base64.decode(s);
+    byte[] data = Base64.decodeBase64(s);
     readFromBytes(data, data.length * 8);
   }
   
@@ -277,7 +276,7 @@ public class BitSequence extends Vector<Boolean>
   public String toBase64()
   {
     byte[] data = toByteArray();
-    return Base64.encode(data);
+    return Base64.encodeBase64String(data);
   }
   
   /**
