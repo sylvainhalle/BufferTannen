@@ -81,6 +81,11 @@ public class Receiver
   protected Map<Integer,SchemaElement> m_schemas;
   
   /**
+   * The maximum length of a frame, in bits
+   */
+  protected int m_maxFrameLength = 512; 
+  
+  /**
    * Verbosity for standard out; a value of 0 won't print anything
    */
   protected int m_verbosity = 0;
@@ -198,10 +203,20 @@ public class Receiver
   {
     return m_deltaSegmentBitsReceived + m_schemaSegmentBitsReceived + m_messageSegmentBitsReceived;
   }
+  
+  /**
+   * Sets the maximum length of a frame
+   * @param length Length of a frame, in bits
+   */
+  public void setFrameMaxLength(int length)
+  {
+    m_maxFrameLength = length;
+  }
 
   public void putBitSequence(BitSequence bs)
   {
     Frame f = new Frame();
+    f.setMaxLength(m_maxFrameLength);
     m_rawBitsReceived += bs.size();
     try
     {
