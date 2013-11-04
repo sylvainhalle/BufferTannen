@@ -26,6 +26,8 @@ protocol could interoperate with implementations written in other languages
 Table of contents                                                    {#toc}
 -----------------
 
+- [Dependencies]{#dependencies}
+- [Compiling](#compiling)
 - [Messages and Schemas](#messages)
 - [Reading and Writing Messages](#read-write)
 - [Transmitting Messages](#transmitting)
@@ -34,6 +36,58 @@ Table of contents                                                    {#toc}
 - [Delta Segments](#delta-segments)
 - [Why BufferTannen?](#why)
 - [About the Author](#about)
+
+Dependencies                                                {#dependencies}
+------------
+
+To compile and run BufferTannen, a number of libraries (jar files) must
+also be installed. They are listed below, along with instructions on how
+to install them.
+
+Overall, the best way is to download the jars and to put them in Java's
+extension folder. This location varies according to the operating system
+you use:
+
+- Solaris™ Operating System: `/usr/jdk/packages/lib/ext`
+- Linux: `/usr/java/packages/lib/ext`
+- Microsoft Windows: `%SystemRoot%\Sun\Java\lib\ext`
+
+and do **not** create subfolders there (i.e. put all archives directly
+in that folder).
+
+### Apache Commons
+
+[Commons](http://commons.apache.org/) is an excellent set of general purpose
+libraries for Java. Gyro Gearloose uses one of these libraries:
+
+- [Codec](http://commons.apache.org/proper/commons-codec/) to generate Base64
+  strings from binary strings when writing QR codes *(tested with version
+  1.8)*
+
+You may want to install only this jar, or the whole Commons API if
+you're a Java developer.
+
+Compiling                                                      {#compiling}
+---------
+
+Once the dependencies are all installed, make sure you also have the
+following installed:
+
+- The Java Development Kit (JDK) to compile. BeepBeep was developed and
+  tested on version 6 of the JDK, but it is probably safe to use any
+  later version. Look out for the requirements of the other libraries in
+  such a case.
+- [Ant](http://ant.apache.org) to automate the compilation and build process
+
+Download the sources for Gyro Gearloose by cloning the repository using Git:
+
+    git clone git://github.com/sylvainhalle/GyroGearloose.git
+
+Compile the sources by simply typing:
+
+    ant
+
+This will produce a file called `GyroGearloose.jar` in the `dist` subfolder.
 
 Messages and Schemas
 --------------------
@@ -265,8 +319,8 @@ a header containing the version number of the protocol (currently "1") and
 the length (in bits) of the frame's content. When many segments are awaiting
 to be transmitted, the protocol tries to fit as many segments as possible
 (in sequential order) within the maximum size of a frame before sending it.
-This maximum size, currently set at 4096 bits (512 bytes), can be modified
-to fit the specifics of the communication channel that is being used.
+This maximum size can be modified to fit the specifics of the communication
+channel that is being used.
 
 In the current version of the protocol, segments cannot be fragmented
 across multiple frames. Hence a segment cannot exceed the maximum size of a
@@ -302,6 +356,10 @@ The `Receiver` class provides functionalities to handle receive operations:
   that may be) with the input of method `putBitSequence`.
 - Method `pollMessage` should be called at periodic intervals. It returns a
   properly decoded SchemaElement object whenever one is ready.
+- Method `setSchema` allows the user to associate a schema to a number in
+  the schema bank. However, normally the [protocol](#protocol-details)
+  transmits schemas as well as messages, and hence `setSchema` should not
+  need to be called directly.
   
 The receiver transparently handles the buffering of segments when received
 out of sequence and the management of the schema bank used to decode
@@ -321,7 +379,187 @@ messages have been lost between the one being processed and the last one.
 Encoding Details                                        {#encoding-details}
 ----------------
 
-TODO
+This section provides a brief description of the way a segment is
+represented as a sequence of bits.
+
+### Frame
+
+    vvvv llllllllllll ...
+
+`v`
+:  Version number (currently the decimal value 1). Encoded on 4 bits.
+
+`l`
+:  Total frame length. Encoded on 12 bits by default, but user-configurable.
+
+`...`
+:  The remainder of the frame is the concatenation of the binary
+   representation of each segment.
+
+### Blob segment
+
+Currently unsupported.
+
+### Message segment
+
+    tt nnnnnnnnnnnn llllllllllll ssss ...
+
+`t`
+:  Segment type, encoded on 2 bits. A message segment contains the decimal
+   value 1.
+
+`n`
+:  Segment sequential number. Encoded on 12 bits.
+
+`l`
+:  Total segment length. Encoded on 12 bits by default, but
+   user-configurable.
+
+`s`
+:  The schema number in the schema bank that should be used to read this
+   segment.
+
+`...`
+:  The remainder of the segment is represented as follows. The number of
+   bits to read is computed from the segment length field.
+
+#### Smallscii string
+
+    cccccc ... 000000
+
+`c`
+:  Character data, encoded on 6 bits.
+
+`000000`
+:  End of string delimiter. Obviously, no character is mapped to the
+   decimal value 0.
+
+#### Integer
+
+    ddd...
+
+`d`
+:  Bits from the integer value. The number of bits to read is dictated by
+   the size of the integer, as specified in the schema of the message to
+   read. If the integer is signed, the first bit represents the sign (0 =
+   positive, 1 = negative) and the remainder of the sequence represents the
+   absolute value. (Yes, this means that there are two ways of encoding 0
+   in a signed integer, either as -0 or as +0. Both will correctly be
+   decoded as 0.)
+
+#### Enumeration
+
+    ddd...
+
+`d`
+:  Bits encoding the enumeration value. The number of bits to read is
+   dictated by the size of the enumeration, as specified in the schema of
+   the message to read. For example, if the enumeration defines 4 values,
+   then 2 (=lg 4) bits will be read. The numerical value *i* corresponds to
+   the *i*-th string declared in the enumeration.
+
+#### List
+
+    llllllll ...
+
+`l`
+:  The number of elements in the list. By default, encoded on 8 bits.
+
+`...`
+:  The remainder of the list is the concatenation of the binary
+   representation of each list element.
+
+#### Fixed Map
+
+The contents of a fixed map is simply the concatenation of the binary
+representation of each map *value*. The key to which each value is
+associated, and the value type to read, are specified in the schema of
+the message to read, and are expected to appear exactly in the order they
+were declared. This spares us from repeating the map's keys in each message.
+
+### Schema Segment
+
+    tt nnnnnnnnnnnn ssss ...
+
+`t`
+:  Segment type, encoded on 2 bits. A schema segment contains the decimal
+   value 2.
+
+`n`
+:  Segment sequential number. Encoded on 12 bits.
+
+`s`
+:  The schema number in the schema bank this segment should assigned to.
+
+`...`
+:  The remainder of the segment is represented as follows.
+
+#### Smallscii string
+
+    ttt
+
+`t`
+:  Element type, encoded on 3 bits. A Smallscii string contains the decimal
+   value 2.
+
+#### Integer
+
+    ttt wwwww ddddd s
+
+`t`
+:  Element type, encoded on 3 bits. An integer contains the decimal
+   value 6.
+`w`
+:  Integer width, in bits, when expressed as a full (i.e. non-delta) value.
+   The width itself is encoded over 5 bits, meaning that an integer can have
+   a maximum width of 31 bits, and hence a maximal value of 2^32 - 1.
+
+`d`
+:  Integer width, in bits, when expressed as a delta value.
+   The width itself is encoded over 5 bits.
+
+`s`
+:  Integer sign flag. If set to 0, integer is unsigned; if set to 1, integer
+   is signed. Note that integers expressed as delta values are *always*
+   encoded as signed integers; hence this flag only applies to integers
+   occurring as full values.
+
+#### Enumeration
+
+    ttt llll [ssssss ssssss ... 000000 ... ssssss ssssss ... 000000]
+
+`t`
+:  Element type, encoded on 3 bits. An enumeration contains the decimal
+   value 1.
+
+`l`
+:  Number of elements in the enumeration, encoded on 4 bits.
+
+What follows is a concatenation of Smallscii strings defining the possible
+values for the enumeration.
+
+#### List
+
+    ttt llllllll ...
+
+`t`
+:  Element type, encoded on 3 bits. A list contains the decimal
+   value 3.
+
+`l`
+:  Maximum number of elements in the list, encoded on 8 bits.
+
+`...`
+:  What follows is the declaration of the element type for elements of that
+   list.
+
+#### Fixed Map
+
+    ttt [ssssss ssssss ... 000000 ddd...]
+
+`t`
+:  Element type, encoded on 3 bits. A fixed map contains the decimal
+   value 4.
 
 [Back to top](#toc)
 
