@@ -37,6 +37,11 @@ public class Frame extends Vector<Segment>
   protected static final int VERSION_NUMBER = 1;
   
   /**
+   * The number of bits used to encode the version number
+   */
+  protected static final int VERSION_WIDTH = 4;
+  
+  /**
    * The log of 2
    */
   protected static final double LOG_2 = Math.log(2);
@@ -48,20 +53,113 @@ public class Frame extends Vector<Segment>
   
   /**
    * Number of bits used to encode the frame length.
-   * Currently 12 bits are used, giving a frame a
-   * maximum length of 4096 bits.
+   * Currently 14 bits are used, giving a frame a
+   * maximum length of 16384 bits (2 kb)
    */
-  protected int m_lengthWidth = 12;
-  protected int m_maxLength = (int) Math.pow(2, m_lengthWidth);
+  public static final int LENGTH_WIDTH = 14;
+  public static final int MAX_LENGTH = (int) Math.pow(2, LENGTH_WIDTH);
   
   /**
-   * Sets the maximum length for the frame
-   * @param length
+   * Maximum length allowed for <em>this</em> frame; different from
+   * maximum theoretical length
    */
-  protected void setMaxLength(int length)
+  public int m_maxLength = MAX_LENGTH;
+  
+  /**
+   * Number of bits used to encode the total number of segments
+   */
+  protected static final int TOTAL_SEGMENTS_WIDTH = 16;
+  
+  /**
+   * Number of bits used to encode the data stream index
+   */
+  protected static final int DATASTREAM_INDEX_WIDTH = 16;
+  
+  /**
+   * A unique value to identify each data stream; this field has the same
+   * role as the "source port" in the TCP protocol.
+   */
+  protected int m_dataStreamIndex = 0;
+  
+  /**
+   * A character string representing the resource name contained in this
+   * stream of data. Typically, this is used to provide a filename for
+   * the data transmitted.
+   */
+  protected String m_resourceIdentifier = "";
+  
+  /**
+   * The total number of segments contained in this transmission.
+   * When set to a nonzero value, indicates that data is transmitted
+   * in "lake" mode; when set to 0, data is transmitted in "stream"
+   * mode.
+   */
+  protected int m_totalSegments = 0;
+  
+  /**
+   * Sets the resource identifier for this frame
+   * @param identifier The identifier
+   */
+  public void setResourceIdentifier(String identifier)
   {
+    m_resourceIdentifier = identifier;
+  }
+  
+  public void setMaxLength(int length)
+  {
+    if (length > MAX_LENGTH)
+      length = MAX_LENGTH;
     m_maxLength = length;
-    m_lengthWidth = (int) Math.ceil(Math.log(length) / LOG_2);
+  }
+  
+  /**
+   * Retrieves the resource identifier for this frame
+   * @return The identifier
+   */
+  public String getResourceIdentifier()
+  {
+    return m_resourceIdentifier;
+  }
+  
+  /**
+   * Sets the data stream index for this frame
+   * @param index The index
+   */
+  public void setDataStreamIndex(int index)
+  {
+    m_dataStreamIndex = index;
+  }
+  
+  /**
+   * Retrieves the total number of segments in this communication
+   * @return The number of segments
+   */
+  public int getTotalSegments()
+  {
+    return m_totalSegments;
+  }
+  
+  /**
+   * Sets the total number of segments in this communication
+   * @param index The number of segments
+   */
+  public void setTotalSegments(int n)
+  {
+    m_totalSegments = n;
+  }
+  
+  /**
+   * Retrieves the data stream index for this frame
+   * @return The index
+   */
+  public int getDataStreamIndex()
+  {
+    return m_dataStreamIndex;
+  }
+  
+  public int getHeaderSize()
+  {
+    return VERSION_WIDTH + LENGTH_WIDTH + TOTAL_SEGMENTS_WIDTH + DATASTREAM_INDEX_WIDTH;
   }
   
   public BitSequence toBitSequence()
@@ -75,7 +173,7 @@ public class Frame extends Vector<Segment>
       sequences.add(seg_seq);
       length += seg_seq.size();
     }
-    length += 4 + m_lengthWidth; // Add the 4 of version number and length 
+    length += VERSION_WIDTH + LENGTH_WIDTH; 
     if (length > m_maxLength)
     {
       // Data is too long for frame: fail
@@ -84,9 +182,13 @@ public class Frame extends Vector<Segment>
     try
     {
       BitSequence data;
-      data = new BitSequence(VERSION_NUMBER, 4);
+      data = new BitSequence(VERSION_NUMBER, VERSION_WIDTH);
       out.addAll(data);
-      data = new BitSequence(length, m_lengthWidth);
+      data = new BitSequence(length, LENGTH_WIDTH);
+      out.addAll(data);
+      data = new BitSequence(m_dataStreamIndex, DATASTREAM_INDEX_WIDTH);
+      out.addAll(data);
+      data = new BitSequence(m_totalSegments, TOTAL_SEGMENTS_WIDTH);
       out.addAll(data);
     }
     catch (BitFormatException e)
@@ -113,24 +215,43 @@ public class Frame extends Vector<Segment>
   {
     BitSequence data;
     int bits_read = 0;
-    if (bs.size() < 4)
+    // Read version number
+    if (bs.size() < VERSION_WIDTH)
     {
       throw new ReadException("Cannot read frame version");
     }
-    data = bs.truncatePrefix(4);
-    bits_read += 4;
+    data = bs.truncatePrefix(VERSION_WIDTH);
+    bits_read += VERSION_WIDTH;
     int version = data.intValue();
     if (version != VERSION_NUMBER)
     {
       throw new ReadException("Incorrect version number");
     }
-    if (bs.size() < m_lengthWidth)
+    // Read frame length
+    if (bs.size() < LENGTH_WIDTH)
     {
       throw new ReadException("Cannot read frame length");
     }
-    data = bs.truncatePrefix(m_lengthWidth);
-    bits_read += m_lengthWidth;
+    data = bs.truncatePrefix(LENGTH_WIDTH);
+    bits_read += LENGTH_WIDTH;
     int frame_length = data.intValue();
+    // Read datastream index
+    if (bs.size() < DATASTREAM_INDEX_WIDTH)
+    {
+      throw new ReadException("Cannot read datastream index");
+    }
+    data = bs.truncatePrefix(DATASTREAM_INDEX_WIDTH);
+    bits_read += DATASTREAM_INDEX_WIDTH;
+    m_dataStreamIndex = data.intValue();
+    // Read total segments
+    if (bs.size() < TOTAL_SEGMENTS_WIDTH)
+    {
+      throw new ReadException("Cannot read total number of segments");
+    }
+    data = bs.truncatePrefix(TOTAL_SEGMENTS_WIDTH);
+    bits_read += TOTAL_SEGMENTS_WIDTH;
+    m_totalSegments = data.intValue();
+    // Read segments
     while (bits_read < frame_length)
     {
       if (bs.size() < Segment.TYPE_WIDTH)
@@ -142,7 +263,10 @@ public class Frame extends Vector<Segment>
       int segment_type = data.intValue();
       if (segment_type == Segment.SEGMENT_BLOB)
       {
-        throw new ReadException("Blob segments are currently unsupported");
+        BlobSegment seg = new BlobSegment();
+        int read = seg.fromBitSequence(bs);
+        this.add(seg);
+        bits_read += read;
       }
       else if (segment_type == Segment.SEGMENT_MESSAGE)
       {

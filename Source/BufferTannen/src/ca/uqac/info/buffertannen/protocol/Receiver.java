@@ -19,9 +19,11 @@ package ca.uqac.info.buffertannen.protocol;
 
 import java.io.PrintStream;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 
+import ca.uqac.info.buffertannen.message.BitFormatException;
 import ca.uqac.info.buffertannen.message.BitSequence;
 import ca.uqac.info.buffertannen.message.ReadException;
 import ca.uqac.info.buffertannen.message.SchemaElement;
@@ -55,6 +57,33 @@ public class Receiver
    * properly decoded and in sequential order
    */
   protected LinkedList<SchemaElement> m_receivedMessages;
+  
+  /**
+   * A buffer for the binary contents received from blob
+   * segments
+   */
+  protected BitSequence m_binaryBuffer;
+  
+  /**
+   * The sequence number of the last segment processed
+   * (whether it was discarded, decoded or not) 
+   */
+  protected int m_lastSegmentNumberSeen = 0;
+   
+  /**
+   * A character string representing the resource name contained in this
+   * stream of data. Typically, this is used to provide a filename for
+   * the data transmitted.
+   */
+  protected String m_resourceIdentifier = "";
+  
+  /**
+   * The total number of segments contained in this transmission.
+   * When set to a nonzero value, indicates that data is transmitted
+   * in "lake" mode; when set to 0, data is transmitted in "stream"
+   * mode.
+   */
+  protected int m_totalSegments = 0;
 
   /**
    * Expected sequence number of next segment
@@ -65,6 +94,11 @@ public class Receiver
    * Number of messages lost since the beginning of the communication
    */
   protected int m_messagesLost = 0;
+  
+  /**
+   * The sequence number of the last processed segment
+   */
+  protected int m_lastProcessedSequenceNumber = -1;
 
   /**
    * Maximum difference between expected sequence number and
@@ -157,6 +191,21 @@ public class Receiver
     m_referenceMessages = new HashMap<Integer,SchemaElement>();
     m_referenceSchemas = new HashMap<Integer,SchemaElement>();
     m_receivedMessages = new LinkedList<SchemaElement>();
+    m_binaryBuffer = new BitSequence();
+  }
+  
+  public int getLastSegmentNumberSeen()
+  {
+    return m_lastSegmentNumberSeen;
+  }
+  
+  public Sender.SendingMode getSendingMode()
+  {
+    if (m_totalSegments > 0)
+    {
+      return Sender.SendingMode.LAKE;
+    }
+    return Sender.SendingMode.STREAM;
   }
 
   public int getMessageLostCount()
@@ -205,18 +254,36 @@ public class Receiver
   }
   
   /**
-   * Sets the maximum length of a frame
-   * @param length Length of a frame, in bits
+   * Attempts to read a number of bytes from the binary buffer.
+   * @param length The number of bytes to read
+   * @return A bit sequence of the prescribed length. If the buffer
+   *   contains less data than the desired length, the whole contents
+   *   of the buffer will be returned. It is hence up to the receiver
+   *   to check the length of the returned sequence.
    */
-  public void setFrameMaxLength(int length)
+  public BitSequence pollBinaryBuffer(int length)
   {
-    m_maxFrameLength = length;
+    return m_binaryBuffer.truncatePrefix(length);
+  }
+  
+  public void putBitSequence(String base64)
+  {
+    BitSequence bs = new BitSequence();
+    try
+    {
+      bs.fromBase64(base64);
+      putBitSequence(bs);
+    }
+    catch (BitFormatException e)
+    {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
   }
 
   public void putBitSequence(BitSequence bs)
   {
     Frame f = new Frame();
-    f.setMaxLength(m_maxFrameLength);
     m_rawBitsReceived += bs.size();
     try
     {
@@ -255,99 +322,134 @@ public class Receiver
   {
     m_verbosity = level;
   }
-
+  
+  public boolean[] getBufferStatus()
+  {
+    if (m_totalSegments < 0)
+    {
+      // Does not apply for stream mode
+      return null;
+    }
+    boolean[] out = new boolean[m_totalSegments];
+    int i = 0;
+    for (; i <= m_lastProcessedSequenceNumber; i++)
+    {
+      out[i] = true;
+    }
+    for (Segment seg : m_receivedSegments)
+    {
+      int seq_no = seg.getSequenceNumber();
+      if (i != seq_no)
+      {
+        System.err.println("ERROR: unexpected sequence number");
+      }
+      if (seg instanceof PlaceholderSegment)
+      {
+        out[i] = false;
+      }
+      else
+      {
+        out[i] = true;
+      }
+      i++;
+    }
+    for (int j = i; j < m_totalSegments; j++)
+    {
+      out[j] = false;
+    }
+    return out;
+  }
+  
   protected void putFrame(Frame f)
   {
+    // Analyze contents of frame
+    m_totalSegments = f.getTotalSegments();
+    if (m_totalSegments > 0)
+    {
+      // This indicates we are in "lake" mode: segments will
+      // be sent over and over. Therefore, we should never declare
+      // a segment as lost. We do this by setting the lostInterval
+      // to a value greater than the total number of expected segments
+      m_lostInterval = m_totalSegments + 1;
+    }
     for (Segment seg : f)
     {
       if (seg instanceof SchemaSegment)
       {
-        // Process schemas right away
-        SchemaElement se = ((SchemaSegment) seg).getSchema();
-        int s_number = ((SchemaSegment) seg).getSchemaNumber();
+        // Update schema bank with received schema segment
+        SchemaSegment ss = (SchemaSegment) seg;
+        SchemaElement se = ss.getSchema();
+        int s_number = ss.getSchemaNumber();
         m_schemas.put(s_number, se);
-        printMessage("Received schema " + s_number, 2);
+        // Update stats
         m_schemaSegmentsReceived++;
-        m_schemaSegmentBitsReceived += seg.getSize();
+        m_schemaSegmentBitsReceived += ss.getSize();
+        printMessage("Received schema " + s_number, 2);   
       }
-      else if (seg instanceof DeltaSegment) // Must appear first, as DeltaSegment is a child of MessageSegment
+      else
       {
-        DeltaSegment ds = (DeltaSegment) seg;
-        printMessage("Received delta segment " + seg.getSequenceNumber() + " referring to segment " + ds.getDeltaToWhat(), 2);
-        insertSegment(seg);
-      }
-      else if (seg instanceof MessageSegment)
-      {
-        printMessage("Received message segment " + seg.getSequenceNumber(), 2);
-        insertSegment(seg);
+        // Insert/replace segment in buffer at proper location
+        insertInBuffer(seg);
       }
     }
+    // Check if some received segments can be processed
     if (m_receivedSegments.isEmpty())
     {
-      // Nothing more to do: segment buffer is empty
+      // No
       return;
     }
-    // We still haven't processed any frame; as we may pick an already
-    // ongoing transmission, set sequence number to smallest one
-    // received and start expecting segments from that number on
-    if (m_expectedSequenceNumber == -1)
+    // All segments with number lower than force_send_index still in the buffer
+    // must be sent
+    Segment last_segment = m_receivedSegments.peekLast();
+    int force_send_index = last_segment.getSequenceNumber() - m_lostInterval;
+    Iterator<Segment> seg_it = m_receivedSegments.iterator();
+    while (seg_it.hasNext())
     {
-      Segment min_seg = m_receivedSegments.peekFirst();
-      m_expectedSequenceNumber = min_seg.getSequenceNumber();
-      printMessage("Setting sequence number to " + m_expectedSequenceNumber, 2);
-    }
-    // Compute difference between highest and lowest sequence number
-    int force_send = 0;
-    Segment max_seg = m_receivedSegments.peekLast();
-    if (max_seg != null)
-    {
-      force_send = max_seg.getSequenceNumber() - m_lostInterval;
-
-    }
-    while (!m_receivedSegments.isEmpty())
-    {
-      Segment seg = m_receivedSegments.peekFirst();
-      if (seg == null)
+      Segment seg = seg_it.next();
+      if (seg instanceof BlobSegment)
       {
-        break;
+        // Blob segments are handled separately; their binary contents
+        // are sent in a binary buffer
+        BlobSegment blob = (BlobSegment) seg;
+        int seg_seq_no = blob.getSequenceNumber();
+        BitSequence bs = blob.getContents();
+        m_binaryBuffer.addAll(bs);
+        m_lastProcessedSequenceNumber = seg_seq_no;
+        seg_it.remove();
       }
-      int seq_no = seg.getSequenceNumber();
-      if (seq_no != m_expectedSequenceNumber)
-      {
-        if (seq_no >= force_send)
-        {
-          // We are no forced to handle this segment right away
-          break;
-        }
-      }
-      if (seg instanceof DeltaSegment)
+      else if (seg instanceof DeltaSegment)
       {
         DeltaSegment ds = (DeltaSegment) seg;
+        int seg_seq_no = ds.getSequenceNumber();
         int ref_segment_no = ds.getDeltaToWhat();
         // We can process delta segments only if we have the reference segment AND the schema
-        if (!m_referenceMessages.containsKey(ref_segment_no) || !m_referenceSchemas.containsKey(ref_segment_no))
+        boolean contains_ref_message = m_referenceMessages.containsKey(ref_segment_no);
+        boolean contains_ref_schema = m_referenceSchemas.containsKey(ref_segment_no);
+        if (!contains_ref_message || !contains_ref_schema)
         {
-          if (!m_referenceMessages.containsKey(ref_segment_no))
+          if (!contains_ref_message)
           {
             printMessage("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference segment " + ref_segment_no, 2);
           }
-          else if (!m_schemas.containsKey(m_referenceSchemas.get(ref_segment_no)))
+          if (!contains_ref_schema)
           {
             printMessage("Cannot process delta segment " + ds.getSequenceNumber() + ": missing reference schema", 2);
           }
-          // We are missing one of them: cannot process any further segment
-          if (seq_no < force_send)
+          // We can't, because we are missing something
+          if (seg_seq_no < force_send_index)
           {
-            // We are forced to handle this segment
-            // Since we can't decode it, we discard it and increment
-            // the count of lost segments
-            printMessage("Delta segment " + seq_no + " declared lost", 2);
-            m_receivedSegments.removeFirst();
-            m_messagesLost += Math.abs(seq_no - m_expectedSequenceNumber + 1);
-            m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
+            // We must process it right now; declare segment as lost
+            printMessage("Delta segment " + seg_seq_no + " declared lost", 2);
+            seg_it.remove();
+            m_lastProcessedSequenceNumber = seg_seq_no;
+            m_messagesLost++;
             continue;
           }
-          break;
+          else
+          {
+            // No need to process it right now: wait until next time
+            break;
+          }
         }
         SchemaElement reference_schema = m_referenceSchemas.get(ref_segment_no);
         SchemaElement reference_element = m_referenceMessages.get(ref_segment_no).copy();
@@ -363,217 +465,166 @@ public class Receiver
         }
         catch (ReadException re)
         {
-          printMessage("Failed to decode delta segment " + seq_no, 1);
+          printMessage("Failed to decode delta segment " + seg_seq_no, 1);
           re.printStackTrace();
-          
           // We failed to decode the message: perhaps the schema is outdated
-          if (seq_no < force_send)
+          if (seg_seq_no < force_send_index)
           {
             // We are forced to handle this segment
-            // Since we can't decode it, we discard it and increment
-            // the count of lost segments
-            printMessage("Message segment " + seq_no + " declared lost", 2);
-            m_receivedSegments.removeFirst();
-            m_messagesLost += Math.abs(seq_no - m_expectedSequenceNumber + 1);
-            m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
+            printMessage("Delta segment " + seg_seq_no + " declared lost", 2);
+            seg_it.remove();
+            m_lastProcessedSequenceNumber = seg_seq_no;
+            m_messagesLost++;
             continue;
           }
           // Otherwise, we can wait until next time
           break;
         }
-        // We decoded the message successfully
-        if (seq_no < force_send)
-        {
-          // ...but we were forced to
-          m_messagesLost += (seq_no - m_expectedSequenceNumber);
-          printMessage("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages", 2);
-        }
-        printMessage("Successfully processed delta segment " + seq_no, 2);
+        // We decoded the segment successfully
+        m_referenceMessages.put(seg_seq_no, se);
+        m_referenceSchemas.put(seg_seq_no, reference_schema);
+        printMessage("Successfully processed delta segment " + seg_seq_no, 2);
         m_deltaSegmentBitsReceived += bits_received;
         m_deltaSegmentsReceived++;
         m_receivedMessages.add(se);
-        m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
-        m_receivedSegments.removeFirst();
+        m_lastProcessedSequenceNumber = seg_seq_no;
+        seg_it.remove();
       }
       else if (seg instanceof MessageSegment)
       {
-        // We can process message segments only if we have the schema to
-        // decode them
         MessageSegment ms = (MessageSegment) seg;
-        int s_number = ms.getSchemaNumber();
-        if (!m_schemas.containsKey(s_number))
+        int seg_seq_no = ms.getSequenceNumber();
+        int schema_number = ms.getSchemaNumber();
+        if (m_schemas.containsKey(schema_number))
         {
-          // We don't have it: cannot process any further segment
-          if (seq_no < force_send)
+          SchemaElement ref_schema = m_schemas.get(schema_number).copy();
+          SchemaElement se = m_schemas.get(schema_number).copy();
+          BitSequence bs = ms.getContents();
+          int bits_received = bs.size();
+          try
           {
-            // We are forced to handle this segment
-            // Since we can't decode it, we discard it and increment
-            // the count of lost segments
-            m_receivedSegments.removeFirst();
-            m_messagesLost += Math.abs(seq_no - m_expectedSequenceNumber);
-            m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
-            continue;
+            se.fromBitSequence(bs);
           }
-          break;
+          catch (ReadException re)
+          {
+            // We failed to decode the message
+            if (seg_seq_no < force_send_index)
+            {
+              // We are forced to handle this segment
+              printMessage("Message segment " + seg_seq_no + " declared lost", 2);
+              m_lastProcessedSequenceNumber = seg_seq_no;
+              seg_it.remove();
+              m_messagesLost++;
+              continue;
+            }
+            // Otherwise, we can wait until next time
+            break;
+          }
+          // We decoded the segment successfully
+          m_referenceMessages.put(seg_seq_no, se);
+          m_referenceSchemas.put(seg_seq_no, ref_schema);
+          printMessage("Successfully processed message segment " + seg_seq_no, 2);
+          m_messageSegmentBitsReceived += bits_received;
+          m_messageSegmentsReceived++;
+          m_receivedMessages.add(se);
+          m_lastProcessedSequenceNumber = seg_seq_no;
+          seg_it.remove();
         }
-        SchemaElement ref_schema = m_schemas.get(s_number).copy();
-        SchemaElement se = m_schemas.get(s_number).copy();
-        BitSequence bs = ms.getContents();
-        int bits_received = bs.size();
-        try
+        else
         {
-          se.fromBitSequence(bs);
-        }
-        catch (ReadException re)
-        {
-          // We failed to decode the message: perhaps the schema is outdated
-          if (seq_no < force_send)
+          // We failed to decode the message
+          if (seg_seq_no < force_send_index)
           {
             // We are forced to handle this segment
-            discardSegment(seq_no, force_send);
+            printMessage("Message segment " + seg_seq_no + " declared lost", 2);
+            m_lastProcessedSequenceNumber = seg_seq_no;
+            seg_it.remove();
+            m_messagesLost++;
             continue;
           }
           // Otherwise, we can wait until next time
           break;
         }
-
-        // We decoded the message successfully
-        if (seq_no < force_send)
+      }
+      else if (seg instanceof PlaceholderSegment)
+      {
+        int seg_seq_no = seg.getSequenceNumber();
+        if (seg_seq_no < force_send_index)
         {
-          // ...but we were forced to
-          m_messagesLost += (seq_no - m_expectedSequenceNumber);
-          printMessage("**Lost " + (seq_no - m_expectedSequenceNumber) + " messages", 2);
+          // No segment there, but we are forced to process it
+          printMessage("Segment " + seg_seq_no + " (of unknown type) declared lost", 2);
+          m_messagesLost++;
+          m_lastProcessedSequenceNumber = seg_seq_no;
+          seg_it.remove();
         }
-        m_referenceMessages.put(seq_no, se);
-        m_referenceSchemas.put(seq_no, ref_schema);
-        printMessage("Successfully processed message segment " + seq_no, 2);
-        m_messageSegmentBitsReceived += bits_received;
-        m_messageSegmentsReceived++;
-        m_receivedMessages.add(se);
-        m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
-        m_receivedSegments.removeFirst();
-        
+        else
+        {
+          // No need to force sending: stop
+          break;
+        }
       }
     }
   }
   
-  protected void discardSegment(int seq_no, int force_send)
-  {
-    if (seq_no < force_send)
-    {
-      // We are forced to handle this segment
-      // Since we can't decode it, we discard it and increment
-      // the count of lost segments
-      m_receivedSegments.removeFirst();
-      m_messagesLost += (seq_no - m_expectedSequenceNumber);
-      m_expectedSequenceNumber = (seq_no + 1) % Segment.MAX_SEQUENCE;
-    }
-  }
-
   /**
-   * Inserts the segment at its proper location in the buffer, based
-   * on its sequential number. Since the sequential number goes back to
-   * 0 after reaching its maximum value, special care must be taken to
-   * 
+   * Insert a segment at the proper location in the segment buffer, based
+   * on its sequential number.
    * @param seg The segment to insert
    */
-  protected void insertSegment(Segment seg)
+  protected void insertInBuffer(Segment seg)
   {
-    int seq_no = seg.getSequenceNumber();
-    int i = 0;
-    if (seq_no < m_expectedSequenceNumber)
+    int seg_seq_no = seg.getSequenceNumber();
+    m_lastSegmentNumberSeen = seg_seq_no;
+    if (seg_seq_no <= m_lastProcessedSequenceNumber)
     {
-      // This segment is a repetition of one we already processed: ignore
-      printMessage("Segment already seen: " + seq_no, 2);
+      // We have already seen and processed that segment
+      printMessage("Segment " + seg_seq_no + " already processed", 2);
       return;
     }
     if (m_receivedSegments.isEmpty())
     {
-      addSegment(seg);
+      for (int j = m_lastProcessedSequenceNumber + 1; j < seg_seq_no; j++)
+      {
+        // Insert placeholder segments if there is a gap between the
+        // segment to add
+        m_receivedSegments.add(new PlaceholderSegment(j));
+      } 
+      // Insert here
+      m_receivedSegments.add(seg);
       return;
     }
-    int first_seg_pos = m_receivedSegments.peekFirst().getSequenceNumber();
-    //int last_seg_pos = m_receivedSegments.peekLast().getSequenceNumber();
-    if (first_seg_pos > seq_no)
+    int i = 0;
+    int list_seg_no = 0;
+    for (Segment list_seg : m_receivedSegments)
     {
-      m_receivedSegments.addFirst(seg);
-      return;
-    }
-    boolean added = false;
-    for (Segment cur_seg : m_receivedSegments)
-    {
+      list_seg_no = list_seg.getSequenceNumber();
+      if (list_seg_no == seg_seq_no)
+      {
+        // Replace segment currently at that location by the one just received
+        if (list_seg instanceof PlaceholderSegment)
+        {
+          m_receivedSegments.remove(i);
+          m_receivedSegments.add(i, seg);
+        }
+        else
+        {
+          printMessage("Segment " + seg_seq_no + " already in buffer", 2);
+        }
+        break;
+      }
       i++;
-      int cur_no = cur_seg.getSequenceNumber();
-      if (cur_no > seq_no)
-      {
-        addSegment(i-1, seg);
-        added = true;
-        break;
-      }
-      else if (cur_no == seq_no)
-      {
-        // This segment is already in the buffer: ignore
-        printMessage("Segment already in buffer: " + seq_no, 2);
-        added = true;
-        break;
-      }
     }
-    if (!added)
+    if (seg_seq_no > list_seg_no)
     {
-      addSegmentLast(seg); // Add last
+      for (int j = list_seg_no + 1; j < seg_seq_no; j++)
+      {
+        // Insert placeholder segments if there is a gap between the
+        // segment to add and the last one received
+        m_receivedSegments.add(new PlaceholderSegment(j));
+      }
+      // Insert here
+      m_receivedSegments.add(seg);      
     }
-  }
-
-  /**
-   * Add a segment at a given position in the buffer of received segments.
-   * If the segment is a message segment, add it also to the map of reference
-   * segments.
-   * @param position The position to add the segment to
-   * @param seg The segment to add
-   */
-  protected void addSegment(int position, Segment seg)
-  {
-    m_receivedSegments.add(position, seg);
-    /*if (seg instanceof MessageSegment)
-    {
-      // Add segment to reference segments
-      MessageSegment ms = (MessageSegment) seg;
-      m_referenceSegments.put(ms.getSequenceNumber(), ms);
-    }*/
-  }
-
-  /**
-   * Add a segment at in the buffer of received segments.
-   * If the segment is a message segment, add it also to the map of reference
-   * segments.
-   * @param seg The segment to add
-   */
-  protected void addSegment(Segment seg)
-  {
-    m_receivedSegments.add(seg);
-    /*if (seg instanceof MessageSegment)
-    {
-      // Add segment to reference segments
-      MessageSegment ms = (MessageSegment) seg;
-      m_referenceMessages.put(ms.getSequenceNumber(), ((MessageSegment) seg).getContents());
-    }*/
-  }
-
-  /**
-   * Add a segment at the end of the buffer of received segments.
-   * If the segment is a message segment, add it also to the map of reference
-   * segments.
-   * @param seg The segment to add
-   */
-  protected void addSegmentLast(Segment seg)
-  {
-    m_receivedSegments.addLast(seg);
-    /*if (seg instanceof MessageSegment)
-    {
-      // Add segment to reference segments
-      MessageSegment ms = (MessageSegment) seg;
-      m_referenceSegments.put(ms.getSequenceNumber(), ms);
-    }*/
   }
 
   public SchemaElement pollMessage()

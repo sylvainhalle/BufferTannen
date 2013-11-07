@@ -31,7 +31,15 @@ public abstract class Segment
   public static final int SEGMENT_SCHEMA = 2;
   public static final int SEGMENT_DELTA = 3;
   public static final int TYPE_WIDTH = 2;
+  
+  /**
+   * The number of bits used to encode the sequence number
+   */
   public static final int SEQUENCE_WIDTH = 12;
+  
+  /**
+   * The maximal sequence number that a segment can carry
+   */
   public static final int MAX_SEQUENCE = (int) Math.pow(2, SEQUENCE_WIDTH);
   
   /**

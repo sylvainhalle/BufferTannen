@@ -20,6 +20,7 @@ package ca.uqac.info.buffertannen.protocol;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Vector;
 
 import ca.uqac.info.buffertannen.message.BitFormatException;
 import ca.uqac.info.buffertannen.message.BitSequence;
@@ -35,6 +36,23 @@ public class Sender
   protected LinkedList<Segment> m_segmentToRepeatBuffer;
   
   protected Map<Integer,SchemaElement> m_schemas;
+  
+  /**
+   * A list of segments to display in repetition when the sender is
+   * in lake mode
+   */
+  protected Vector<BitSequence> m_lakeFrames;
+  
+  /**
+   * The counter indicating the next frame from the buffer to
+   * send when in lake mode 
+   */
+  protected int m_lakeCounter = 0;
+  
+  /**
+   * Whether to loop around in lake mode
+   */
+  protected boolean m_lakeLoop = false;
   
   /**
    * The maximum length of a frame, in bits
@@ -77,6 +95,16 @@ public class Sender
    * A counter to give sequential numbers to segments
    */
   protected int m_sequenceNumber = 0;
+  
+  /**
+   * A list of sending modes
+   */
+  public static enum SendingMode {STREAM, LAKE};
+  
+  /**
+   * The sending mode used by that particular sender
+   */
+  protected SendingMode m_sendingMode = SendingMode.STREAM;
   
   /**
    * The number of delta segments sent since the last message segment
@@ -169,6 +197,29 @@ public class Sender
   protected int m_bufferSizeBits = 0;
   
   /**
+   * Set the sending mode to be used by that sender.
+   * @param mode The sending mode
+   */
+  public void setSendingMode(SendingMode mode)
+  {
+    m_sendingMode = mode;
+    if (mode == SendingMode.LAKE)
+    {
+      setEmptyBufferIsEof(true);
+    }
+  }
+  
+  public SendingMode getSendingMode()
+  {
+    return m_sendingMode;
+  }
+  
+  public void setLakeLoop(boolean loop)
+  {
+    m_lakeLoop = loop;
+  }
+  
+  /**
    * Determines the behaviour of the sender when the frame
    * buffer is empty.
    * @param b If set to true, an empty frame buffer means that the
@@ -239,6 +290,7 @@ public class Sender
     m_segmentBuffer = new LinkedList<Segment>();
     m_segmentToRepeatBuffer = new LinkedList<Segment>();
     m_schemas = new HashMap<Integer,SchemaElement>();
+    m_lakeFrames = new Vector<BitSequence>();
   }
   
   /**
@@ -251,8 +303,8 @@ public class Sender
   }
   
   /**
-   * Sets the interval at which message segmentsmust be sent.
-   * @param interval Interval at which message segmentsmust be sent.
+   * Sets the interval at which message segments must be sent.
+   * @param interval Interval at which message segments must be sent.
    *   Set to 0 to disable delta segments completely.
    */
   public void setDeltaSegmentInterval(int interval)
@@ -262,10 +314,65 @@ public class Sender
   
   /**
    * Polls the sender's output buffer and returns the first
-   * frame of that buffer as a sequence of bits, if any exists 
+   * frame of that buffer as a sequence of bits, if any exists
+   * @param loop Set to true to loop infinitely in lake mode 
    * @return The first frame in the buffer, null if there is nothing to send
    */
   public BitSequence pollBitSequence()
+  {
+    if (m_sendingMode == SendingMode.STREAM)
+    {
+      return pollLiveBitSequence();
+    }
+    // Sending mode is LAKE
+    if (m_lakeFrames.isEmpty())
+    {
+      // First populate the lake frames
+      int total_segments = countNonSchemaSegments();
+      Frame f = pollBuffer();
+      while (f != null)
+      {
+        f.setTotalSegments(total_segments);
+        BitSequence bs = f.toBitSequence();
+        m_lakeFrames.add(bs);
+        f = pollBuffer();
+      }
+      m_lakeCounter = 0;
+    }
+    if (m_lakeCounter >= m_lakeFrames.size() && !m_lakeLoop)
+    {
+      return null;
+    }
+    BitSequence out = m_lakeFrames.get(m_lakeCounter);
+    m_framesSent++;
+    m_lakeCounter++;
+    if (m_lakeLoop)
+    {
+      // Loop around the lake buffer
+      m_lakeCounter = m_lakeCounter % m_lakeFrames.size();
+    }
+    return out;
+  }
+  
+  /**
+   * Returns the number of segments in the buffer that are not schema
+   * segments (i.e. either message, delta or blob).
+   * @return The number of segments
+   */
+  protected int countNonSchemaSegments()
+  {
+    int out = 0;
+    for (Segment seg : m_segmentBuffer)
+    {
+      if (!(seg instanceof SchemaSegment))
+      {
+        out = Math.max(out, seg.getSequenceNumber());
+      }
+    }
+    return out + 1; // Since numbering starts at 0
+  }
+  
+  protected BitSequence pollLiveBitSequence()
   {
     Frame f = pollBuffer();
     if (f == null)
@@ -273,7 +380,7 @@ public class Sender
       return null;
     }
     m_framesSent++;
-    return f.toBitSequence();
+    return f.toBitSequence();    
   }
   
   /**
@@ -297,8 +404,9 @@ public class Sender
     // within frame size limits
     int total_size = 0;
     Frame f = new Frame();
+    int actual_content_size = m_maxFrameLength - f.getHeaderSize(); 
     f.setMaxLength(m_maxFrameLength);
-    while (total_size < m_maxFrameLength && !m_segmentBuffer.isEmpty())
+    while (total_size < actual_content_size && !m_segmentBuffer.isEmpty())
     {
       Segment seg = m_segmentBuffer.getFirst();
       int segment_size = seg.getSize();
@@ -308,7 +416,7 @@ public class Sender
         System.err.println("ERROR: found a segment larger than max frame size");
       }
       total_size += seg.getSize();
-      if (total_size < m_maxFrameLength)
+      if (total_size < actual_content_size)
       {
         m_segmentBuffer.removeFirst();
         f.add(seg);
@@ -328,6 +436,58 @@ public class Sender
   public void addMessage(int number, SchemaElement e)
   {
     addMessage(number, e, false);
+  }
+  
+  /**
+   * Add a pre-built segment to the sender's segment buffer
+   * @param ms The segment to add
+   */
+  protected void addSegment(Segment ms)
+  {
+    ms.setSequenceNumber(m_sequenceNumber);
+    // Add to buffer
+    m_segmentBuffer.add(ms);
+    // Add to repeat buffer
+    m_segmentToRepeatBuffer.add(ms);
+    // Update sequence number
+    m_sequenceNumber = (m_sequenceNumber + 1) % Segment.MAX_SEQUENCE;
+    if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 0)
+    {
+      // It's time to broadcast a schema
+      insertPeriodicalSchemaMessage();
+    }
+    if (m_repeatAfterN > 0)
+    {
+      while (!m_segmentToRepeatBuffer.isEmpty())
+      {
+        Segment seg_to_rep = m_segmentToRepeatBuffer.peekFirst();
+        int seq_num = seg_to_rep.getSequenceNumber();
+        if (m_sequenceNumber - seq_num > m_repeatAfterN)
+        {
+          // Time to repeat the segment
+          m_segmentBuffer.add(seg_to_rep);
+          m_bufferSizeBits += seg_to_rep.getSize();
+          m_segmentToRepeatBuffer.removeFirst();
+        }
+        else 
+        {
+          // Since segments are stored in the buffer in increasing sequential no,
+          // no further segment will be in the desired interval
+          break;
+        }
+      }
+    }    
+  }
+  
+  /**
+   * Adds a blob segment to the sender's segment buffer
+   * @param bs The bit sequence from which to build the blob segment
+   */
+  public void addBlob(BitSequence bs)
+  {
+    BlobSegment blob = new BlobSegment();
+    blob.setContents(bs);
+    addSegment(blob);
   }
   
   /**
@@ -406,39 +566,7 @@ public class Sender
       m_messageSegmentBitsSent += mssize;
       m_bufferSizeBits += mssize;
     }
-    ms.setSequenceNumber(m_sequenceNumber);
-    // Add to buffer
-    m_segmentBuffer.add(ms);
-    // Add to repeat buffer
-    m_segmentToRepeatBuffer.add(ms);
-    // Update sequence number
-    m_sequenceNumber = (m_sequenceNumber + 1) % Segment.MAX_SEQUENCE;
-    if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 0)
-    {
-      // It's time to broadcast a schema
-      insertPeriodicalSchemaMessage();
-    }
-    if (m_repeatAfterN > 0)
-    {
-      while (!m_segmentToRepeatBuffer.isEmpty())
-      {
-        Segment seg_to_rep = m_segmentToRepeatBuffer.peekFirst();
-        int seq_num = seg_to_rep.getSequenceNumber();
-        if (m_sequenceNumber - seq_num > m_repeatAfterN)
-        {
-          // Time to repeat the segment
-          m_segmentBuffer.add(seg_to_rep);
-          m_bufferSizeBits += seg_to_rep.getSize();
-          m_segmentToRepeatBuffer.removeFirst();
-        }
-        else 
-        {
-          // Since segments are stored in the buffer in increasing sequential no,
-          // no further segment will be in the desired interval
-          break;
-        }
-      }
-    }
+    addSegment(ms);
   }
   
   /**

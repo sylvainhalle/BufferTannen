@@ -331,7 +331,9 @@ public class BitSequence extends Vector<Boolean>
   
   /**
    * Truncates the bit sequence off the first n bits
-   * @param to The number of bits to remove from the beginning of the sequence
+   * @param to The number of bits to remove from the beginning of the
+   *   sequence. If this value is greater than the length of the sequence,
+   *   the whole sequence is returned.
    */
   public BitSequence truncatePrefix(int to)
   {
