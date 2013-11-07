@@ -27,6 +27,7 @@ import ca.uqac.info.buffertannen.message.BitSequence;
 import ca.uqac.info.buffertannen.message.CannotComputeDeltaException;
 import ca.uqac.info.buffertannen.message.ReadException;
 import ca.uqac.info.buffertannen.message.SchemaElement;
+import ca.uqac.info.buffertannen.message.SmallsciiElement;
 import ca.uqac.info.buffertannen.message.TypeMismatchException;
 
 public class Sender
@@ -196,6 +197,10 @@ public class Sender
    */
   protected int m_bufferSizeBits = 0;
   
+  protected int m_dataStreamIndex = 0;
+  
+  protected String m_resourceIdentifier = "";
+  
   /**
    * Set the sending mode to be used by that sender.
    * @param mode The sending mode
@@ -206,6 +211,8 @@ public class Sender
     if (mode == SendingMode.LAKE)
     {
       setEmptyBufferIsEof(true);
+      m_repeatAfterN = -1; // Don't repeat segments in lake mode; they are repeated anyway
+      m_broadcastSchemasEveryN = 1000; // Set to a large value
     }
   }
   
@@ -300,6 +307,15 @@ public class Sender
   public void setFrameMaxLength(int length)
   {
     m_maxFrameLength = length;
+  }
+  
+  /**
+   * Gets the maximum length of a frame
+   * @return Length of a frame, in bits
+   */
+  public int getFrameMaxLength()
+  {
+    return m_maxFrameLength;
   }
   
   /**
@@ -404,8 +420,10 @@ public class Sender
     // within frame size limits
     int total_size = 0;
     Frame f = new Frame();
-    int actual_content_size = m_maxFrameLength - f.getHeaderSize(); 
     f.setMaxLength(m_maxFrameLength);
+    f.setResourceIdentifier(m_resourceIdentifier);
+    f.setDataStreamIndex(m_dataStreamIndex);
+    int actual_content_size = m_maxFrameLength - f.getHeaderSize();
     while (total_size < actual_content_size && !m_segmentBuffer.isEmpty())
     {
       Segment seg = m_segmentBuffer.getFirst();
@@ -451,7 +469,7 @@ public class Sender
     m_segmentToRepeatBuffer.add(ms);
     // Update sequence number
     m_sequenceNumber = (m_sequenceNumber + 1) % Segment.MAX_SEQUENCE;
-    if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 0)
+    if (m_broadcastSchemasEveryN > 0 && m_sequenceNumber % m_broadcastSchemasEveryN == 1)
     {
       // It's time to broadcast a schema
       insertPeriodicalSchemaMessage();
@@ -479,6 +497,16 @@ public class Sender
     }    
   }
   
+  public void setResourceIdentifier(String s)
+  {
+    m_resourceIdentifier = s;
+  }
+  
+  public void setDataStreamIndex(int index)
+  {
+    m_dataStreamIndex = index;
+  }
+  
   /**
    * Adds a blob segment to the sender's segment buffer
    * @param bs The bit sequence from which to build the blob segment
@@ -488,6 +516,16 @@ public class Sender
     BlobSegment blob = new BlobSegment();
     blob.setContents(bs);
     addSegment(blob);
+  }
+  
+  public int getMaxBlobSize()
+  {
+    Frame f = new Frame();
+    f.setMaxLength(m_maxFrameLength);
+    f.setResourceIdentifier(m_resourceIdentifier);
+    f.setDataStreamIndex(m_dataStreamIndex);
+    int actual_content_size = m_maxFrameLength - f.getHeaderSize();
+    return actual_content_size;
   }
   
   /**

@@ -78,6 +78,11 @@ public class Receiver
   protected String m_resourceIdentifier = "";
   
   /**
+   * The index of the data stream currently being processed
+   */
+  protected int m_dataStreamIndex = 0; 
+  
+  /**
    * The total number of segments contained in this transmission.
    * When set to a nonzero value, indicates that data is transmitted
    * in "lake" mode; when set to 0, data is transmitted in "stream"
@@ -140,6 +145,11 @@ public class Receiver
    * Number of bits received as message segments
    */
   protected int m_messageSegmentBitsReceived = 0;
+  
+  /**
+   * Number of bits received as blob segments
+   */
+  protected int m_blobSegmentBitsReceived = 0;
   
   /**
    * Number of bits received as delta segments
@@ -250,12 +260,13 @@ public class Receiver
   
   public int getNumberOfDistinctBits()
   {
-    return m_deltaSegmentBitsReceived + m_schemaSegmentBitsReceived + m_messageSegmentBitsReceived;
+    return m_deltaSegmentBitsReceived + m_schemaSegmentBitsReceived + m_messageSegmentBitsReceived + m_blobSegmentBitsReceived;
   }
   
   /**
    * Attempts to read a number of bytes from the binary buffer.
-   * @param length The number of bytes to read
+   * @param length The number of bytes to read. -1 to get the whole
+   *   buffer
    * @return A bit sequence of the prescribed length. If the buffer
    *   contains less data than the desired length, the whole contents
    *   of the buffer will be returned. It is hence up to the receiver
@@ -263,6 +274,10 @@ public class Receiver
    */
   public BitSequence pollBinaryBuffer(int length)
   {
+    if (length < 0)
+    {
+      length = m_binaryBuffer.size();
+    }
     return m_binaryBuffer.truncatePrefix(length);
   }
   
@@ -360,6 +375,16 @@ public class Receiver
     return out;
   }
   
+  public int getDataStreamIndex()
+  {
+    return m_dataStreamIndex;
+  }
+  
+  public String getResourceIdentifier()
+  {
+    return m_resourceIdentifier;
+  }
+  
   protected void putFrame(Frame f)
   {
     // Analyze contents of frame
@@ -372,6 +397,8 @@ public class Receiver
       // to a value greater than the total number of expected segments
       m_lostInterval = m_totalSegments + 1;
     }
+    m_dataStreamIndex = f.getDataStreamIndex();
+    m_resourceIdentifier = f.getResourceIdentifier();
     for (Segment seg : f)
     {
       if (seg instanceof SchemaSegment)
@@ -415,6 +442,8 @@ public class Receiver
         BitSequence bs = blob.getContents();
         m_binaryBuffer.addAll(bs);
         m_lastProcessedSequenceNumber = seg_seq_no;
+        m_blobSegmentBitsReceived += bs.size();
+        printMessage("Processed blob segment " + seg_seq_no, 2);
         seg_it.remove();
       }
       else if (seg instanceof DeltaSegment)

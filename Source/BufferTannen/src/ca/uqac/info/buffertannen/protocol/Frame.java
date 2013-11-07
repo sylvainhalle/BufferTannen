@@ -23,6 +23,7 @@ import java.util.Vector;
 import ca.uqac.info.buffertannen.message.BitFormatException;
 import ca.uqac.info.buffertannen.message.BitSequence;
 import ca.uqac.info.buffertannen.message.ReadException;
+import ca.uqac.info.buffertannen.message.SmallsciiElement;
 
 public class Frame extends Vector<Segment>
 {
@@ -86,7 +87,7 @@ public class Frame extends Vector<Segment>
    * stream of data. Typically, this is used to provide a filename for
    * the data transmitted.
    */
-  protected String m_resourceIdentifier = "";
+  protected SmallsciiElement m_resourceIdentifier = new SmallsciiElement();
   
   /**
    * The total number of segments contained in this transmission.
@@ -102,7 +103,7 @@ public class Frame extends Vector<Segment>
    */
   public void setResourceIdentifier(String identifier)
   {
-    m_resourceIdentifier = identifier;
+    m_resourceIdentifier = new SmallsciiElement(identifier);
   }
   
   public void setMaxLength(int length)
@@ -118,7 +119,8 @@ public class Frame extends Vector<Segment>
    */
   public String getResourceIdentifier()
   {
-    return m_resourceIdentifier;
+    String ri = m_resourceIdentifier.toString();
+    return ri.replaceAll("\"", "");
   }
   
   /**
@@ -159,7 +161,10 @@ public class Frame extends Vector<Segment>
   
   public int getHeaderSize()
   {
-    return VERSION_WIDTH + LENGTH_WIDTH + TOTAL_SEGMENTS_WIDTH + DATASTREAM_INDEX_WIDTH;
+    int size = VERSION_WIDTH + LENGTH_WIDTH + TOTAL_SEGMENTS_WIDTH + DATASTREAM_INDEX_WIDTH;
+    // The size in bits of the Smallscii string
+    size += m_resourceIdentifier.getSize();
+    return size;
   }
   
   public BitSequence toBitSequence()
@@ -189,6 +194,8 @@ public class Frame extends Vector<Segment>
       data = new BitSequence(m_dataStreamIndex, DATASTREAM_INDEX_WIDTH);
       out.addAll(data);
       data = new BitSequence(m_totalSegments, TOTAL_SEGMENTS_WIDTH);
+      out.addAll(data);
+      data = m_resourceIdentifier.toBitSequence();
       out.addAll(data);
     }
     catch (BitFormatException e)
@@ -251,6 +258,10 @@ public class Frame extends Vector<Segment>
     data = bs.truncatePrefix(TOTAL_SEGMENTS_WIDTH);
     bits_read += TOTAL_SEGMENTS_WIDTH;
     m_totalSegments = data.intValue();
+    // Read resource identifier
+    SmallsciiElement ri = new SmallsciiElement();
+    bits_read += ri.fromBitSequence(bs);
+    m_resourceIdentifier = ri;
     // Read segments
     while (bits_read < frame_length)
     {

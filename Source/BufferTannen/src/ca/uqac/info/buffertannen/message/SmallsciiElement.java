@@ -64,6 +64,15 @@ public class SmallsciiElement extends StringElement
     return s_characters.substring(code - 1, code);
   }
   
+  /**
+   * Returns the size (in bits) of the Smallscii string
+   * @return The size in bits
+   */
+  public int getSize()
+  {
+    return (m_contents.length() + 1) * 6;
+  }
+  
   public BitSequence toBitSequence(boolean as_delta)
   {
     BitSequence bs = new BitSequence();
