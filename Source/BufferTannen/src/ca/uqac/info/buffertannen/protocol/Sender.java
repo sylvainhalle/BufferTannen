@@ -27,7 +27,6 @@ import ca.uqac.info.buffertannen.message.BitSequence;
 import ca.uqac.info.buffertannen.message.CannotComputeDeltaException;
 import ca.uqac.info.buffertannen.message.ReadException;
 import ca.uqac.info.buffertannen.message.SchemaElement;
-import ca.uqac.info.buffertannen.message.SmallsciiElement;
 import ca.uqac.info.buffertannen.message.TypeMismatchException;
 
 public class Sender
@@ -53,7 +52,7 @@ public class Sender
   /**
    * Whether to loop around in lake mode
    */
-  protected boolean m_lakeLoop = false;
+  protected boolean m_lakeLoop = true;
   
   /**
    * The maximum length of a frame, in bits
@@ -148,6 +147,11 @@ public class Sender
   protected int m_messageSegmentBitsSent = 0;
   
   /**
+   * Number of bits Sent as blob segments
+   */
+  protected int m_blobSegmentsBitsSent = 0;
+  
+  /**
    * Number of bits Sent as delta segments
    */
   protected int m_deltaSegmentBitsSent = 0;
@@ -176,6 +180,11 @@ public class Sender
    * Number of message segments Sent
    */
   protected int m_messageSegmentsSent = 0;
+  
+  /**
+   * Number of blob segments Sent
+   */
+  protected int m_blobSegmentsSent = 0;
   
   /**
    * Number of delta segments Sent
@@ -253,6 +262,16 @@ public class Sender
   public int getNumberOfDeltaSegments()
   {
     return m_deltaSegmentsSent;
+  }
+  
+  public int getNumberOfBlobSegments()
+  {
+    return m_blobSegmentsSent;
+  }
+  
+  public int getNumberOfBlobSegmentsBits()
+  {
+    return m_blobSegmentsBitsSent;
   }
   
   public int getNumberOfMessageSegmentsBits()
@@ -355,7 +374,7 @@ public class Sender
       }
       m_lakeCounter = 0;
     }
-    if (m_lakeCounter >= m_lakeFrames.size() && !m_lakeLoop)
+    if (m_lakeFrames.isEmpty() || (m_lakeCounter >= m_lakeFrames.size() && !m_lakeLoop))
     {
       return null;
     }
@@ -413,17 +432,24 @@ public class Sender
         return null;
       else
       {
-        insertPeriodicalSchemaMessage();
+        if (m_schemas.isEmpty())
+        {
+          // No schema registered; we must be in binary mode
+          // Since we have nothing to send, just return an empty frame
+          return newFrame();
+        }
+        else
+        {
+          // There is a schema to send; send it
+          insertPeriodicalSchemaMessage();
+        }
       }
     }
     // Create a frame by packing as many pending segments as possible
     // within frame size limits
     int total_size = 0;
-    Frame f = new Frame();
-    f.setMaxLength(m_maxFrameLength);
-    f.setResourceIdentifier(m_resourceIdentifier);
-    f.setDataStreamIndex(m_dataStreamIndex);
-    int actual_content_size = m_maxFrameLength - f.getHeaderSize();
+    Frame f = newFrame();
+    int actual_content_size = getMaxDataSize();
     while (total_size < actual_content_size && !m_segmentBuffer.isEmpty())
     {
       Segment seg = m_segmentBuffer.getFirst();
@@ -441,7 +467,25 @@ public class Sender
         m_rawBitsSent += segment_size;
         m_bufferSizeBits -= segment_size;
       }
+      if (f.size() == 0)
+      {
+        // Not supposed to happen!
+        System.err.println("ERROR: could not put any frame in segment");
+      }
     }
+    return f;
+  }
+  
+  /**
+   * Instantiates a new empty frame, based on current sender settings
+   * @return The new frame
+   */
+  protected Frame newFrame()
+  {
+    Frame f = new Frame();
+    f.setMaxLength(m_maxFrameLength);
+    f.setResourceIdentifier(m_resourceIdentifier);
+    f.setDataStreamIndex(m_dataStreamIndex);
     return f;
   }
   
@@ -515,10 +559,14 @@ public class Sender
   {
     BlobSegment blob = new BlobSegment();
     blob.setContents(bs);
+    int blob_size = blob.getSize();
+    m_blobSegmentsSent++;
+    m_blobSegmentsBitsSent += blob_size;
+    m_bufferSizeBits += blob_size;
     addSegment(blob);
   }
   
-  public int getMaxBlobSize()
+  public int getMaxDataSize()
   {
     Frame f = new Frame();
     f.setMaxLength(m_maxFrameLength);

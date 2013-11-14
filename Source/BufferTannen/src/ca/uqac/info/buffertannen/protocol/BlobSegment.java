@@ -105,11 +105,16 @@ public class BlobSegment extends Segment
     out.append("Sequence number: ").append(m_sequenceNumber).append("\n");
     return out.toString();
   }
+  
+  public static int getHeaderSize()
+  {
+    return TYPE_WIDTH + SEQUENCE_WIDTH + LENGTH_WIDTH; 
+  }
 
   @Override
   public int getSize()
   {
-    return TYPE_WIDTH + SEQUENCE_WIDTH + LENGTH_WIDTH + m_contents.size();
+    return getHeaderSize() + m_contents.size();
   }
   
   /**
