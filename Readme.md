@@ -1,7 +1,5 @@
-BufferTannen: a protocol
-========================
-
-(User Manual, version 2013-10-25)
+BufferTannen: a protocol for one-way communication channels
+===========================================================
 
 BufferTannen is a Java software package that allows the serialization and
 transmission of structured data over limited communication channels. It is
@@ -26,7 +24,6 @@ protocol could interoperate with implementations written in other languages
 Table of contents                                                    {#toc}
 -----------------
 
-- [Dependencies]{#dependencies}
 - [Compiling](#compiling)
 - [Messages and Schemas](#messages)
 - [Reading and Writing Messages](#read-write)
@@ -37,25 +34,26 @@ Table of contents                                                    {#toc}
 - [Why BufferTannen?](#why)
 - [About the Author](#about)
 
-Dependencies                                                {#dependencies}
-------------
+Compiling                                                      {#compiling}
+---------
 
-To compile and run BufferTannen, a number of libraries (jar files) must
-also be installed. They are listed below, along with instructions on how
-to install them.
+First make sure you have the following installed:
 
-Overall, the best way is to download the jars and to put them in Java's
-extension folder. This location varies according to the operating system
-you use:
+- The Java Development Kit (JDK) to compile. BeepBeep was developed and
+  tested on version 6 of the JDK, but it is probably safe to use any
+  later version. Look out for the requirements of the other libraries in
+  such a case.
+- [Ant](http://ant.apache.org) to automate the compilation and build process
 
-- Solaris™ Operating System: `/usr/jdk/packages/lib/ext`
-- Linux: `/usr/java/packages/lib/ext`
-- Microsoft Windows: `%SystemRoot%\Sun\Java\lib\ext`
+Download the sources for BufferTannen by cloning the repository using Git:
 
-and do **not** create subfolders there (i.e. put all archives directly
-in that folder).
+    git clone git://github.com/sylvainhalle/BufferTannen.git
 
-### Apache Commons
+Compile the sources by simply typing:
+
+    ant
+
+This will produce a file called `buffertannen.jar` in the `dist` subfolder.
 
 [Commons](http://commons.apache.org/) is an excellent set of general purpose
 libraries for Java. Gyro Gearloose uses one of these libraries:
@@ -64,30 +62,12 @@ libraries for Java. Gyro Gearloose uses one of these libraries:
   strings from binary strings when writing QR codes *(tested with version
   1.8)*
 
-You may want to install only this jar, or the whole Commons API if
-you're a Java developer.
+You can automatically download it by typing:
 
-Compiling                                                      {#compiling}
----------
+    ant download-deps
 
-Once the dependencies are all installed, make sure you also have the
-following installed:
-
-- The Java Development Kit (JDK) to compile. BeepBeep was developed and
-  tested on version 6 of the JDK, but it is probably safe to use any
-  later version. Look out for the requirements of the other libraries in
-  such a case.
-- [Ant](http://ant.apache.org) to automate the compilation and build process
-
-Download the sources for Gyro Gearloose by cloning the repository using Git:
-
-    git clone git://github.com/sylvainhalle/GyroGearloose.git
-
-Compile the sources by simply typing:
-
-    ant
-
-This will produce a file called `GyroGearloose.jar` in the `dist` subfolder.
+This will put the missing JAR files in the `deps` folder in the project's
+root.
 
 Messages and Schemas
 --------------------
