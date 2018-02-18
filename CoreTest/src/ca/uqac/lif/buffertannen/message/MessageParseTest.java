@@ -2,22 +2,20 @@ package ca.uqac.lif.buffertannen.message;
 
 import static org.junit.Assert.*;
 
-import java.io.IOException;
-
 import org.junit.Test;
 
 import ca.uqac.lif.buffertannen.message.ReadException;
 import ca.uqac.lif.buffertannen.message.SchemaElement;
-import ca.uqac.lif.util.FileReadWrite;
+import ca.uqac.lif.util.FileHelper;
 
 public class MessageParseTest
 {
 
   @Test
-  public void testComplexMap()
+  public void testComplexMap() throws ReadException
   {
-    SchemaElement se = getSchema("test/Schema-2.txt");
-    String file_contents = failsafeGetFile("test/Message-1.txt");;
+    SchemaElement se = getSchema("data/Schema-2.txt");
+    String file_contents = FileHelper.internalFileToString(this.getClass(), "data/Message-1.txt");
     try
     {
       se.readContentsFromString(file_contents);
@@ -30,10 +28,10 @@ public class MessageParseTest
   }
   
   @Test
-  public void testSimpleList()
+  public void testSimpleList() throws ReadException
   {
-    SchemaElement se = getSchema("test/Schema-3.txt");
-    String file_contents = failsafeGetFile("test/Message-2.txt");;
+    SchemaElement se = getSchema("data/Schema-3.txt");
+    String file_contents = FileHelper.internalFileToString(this.getClass(), "data/Message-2.txt");;
     try
     {
       se.readContentsFromString(file_contents);
@@ -45,32 +43,10 @@ public class MessageParseTest
     System.out.println(se.toString());
   }
   
-  protected static SchemaElement getSchema(String filename)
+  protected static SchemaElement getSchema(String filename) throws ReadException
   {
-    String file_contents = failsafeGetFile(filename);
-    SchemaElement se = null;
-    try
-    {
-      se = SchemaElement.parseSchemaFromString(file_contents);
-    } catch (ReadException e)
-    {
-      // TODO Auto-generated catch block
-      fail(e.getMessage());
-    }
-    return se;
-  }
-  
-  protected static String failsafeGetFile(String filename)
-  {
-    String file_contents = "";
-    try
-    {
-      file_contents = FileReadWrite.readFile(filename);
-    } catch (IOException e)
-    {
-      // Do nothing
-    }   
-    return file_contents;
+    String file_contents = FileHelper.internalFileToString(MessageParseTest.class, filename);
+    return SchemaElement.parseSchemaFromString(file_contents);
   }
 
 }

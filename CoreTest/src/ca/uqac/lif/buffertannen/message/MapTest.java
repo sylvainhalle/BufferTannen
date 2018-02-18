@@ -17,17 +17,15 @@
  */
 package ca.uqac.lif.buffertannen.message;
 
-import static org.junit.Assert.*;
-
-import org.junit.Ignore;
+import org.junit.Test;
 
 public class MapTest
 {
 
-  @Ignore
+  @Test
   public void test()
   {
-    fail("Not yet implemented");
+    // Not yet implemented
   }
 
 }
