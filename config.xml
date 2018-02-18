@@ -38,8 +38,8 @@
   <!-- Installation folders -->
   <srcdir>Core/src</srcdir>
   <bindir>Core/bin</bindir>
-  <docdir>doc</docdir>
-  <depdir>dep</depdir>
+  <docdir>Core/doc</docdir>
+  <depdir>Core/dep</depdir>
   <test>
     <srcdir>CoreTest/src</srcdir>
     <bindir>CoreTest/bin</bindir>
