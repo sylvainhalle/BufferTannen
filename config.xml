@@ -63,8 +63,9 @@
       <name>Commons Codec</name>
       <classname>org.apache.commons.codec.binary.Base64</classname>
       <files>
-        <zip>http://apache.mirror.rafal.ca/commons/codec/binaries/commons-codec-1.11-bin.zip</zip>
+        <zip>http://archive.apache.org/dist/commons/codec/commons-codec-1.1.zip</zip>
       </files>
+      <bundle>true</bundle>
     </dependency>
   </dependencies>
 </build>

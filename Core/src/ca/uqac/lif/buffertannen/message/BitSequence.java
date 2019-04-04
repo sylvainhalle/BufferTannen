@@ -1,6 +1,6 @@
 /*
     Buffer Tannen, a binary message protocol
-    Copyright (C) 2013-2018  Sylvain Hallé
+    Copyright (C) 2013-2019  Sylvain Hallé
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Lesser General Public License as published
@@ -265,7 +265,7 @@ public class BitSequence extends Vector<Boolean>
    */
   public void fromBase64(String s) throws BitFormatException
   {
-    byte[] data = Base64.decodeBase64(s);
+    byte[] data = Base64.decodeBase64(s.getBytes());
     readFromBytes(data, data.length * 8);
   }
   
@@ -276,7 +276,8 @@ public class BitSequence extends Vector<Boolean>
   public String toBase64()
   {
     byte[] data = toByteArray();
-    return Base64.encodeBase64String(data);
+    String out = new String(Base64.encodeBase64(data));
+    return out;
   }
   
   /**

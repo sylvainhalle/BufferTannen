@@ -1,6 +1,6 @@
 /*
     Buffer Tannen, a binary message protocol
-    Copyright (C) 2013-2018  Sylvain Hallé
+    Copyright (C) 2013-2019  Sylvain Hallé
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Lesser General Public License as published
@@ -32,7 +32,7 @@ public class Main
 	public static void main(String[] args)
 	{
 		System.out.println("Buffer Tannen v" + s_versionString + " - Binary protocol");
-		System.out.println("(C) 2013-2018 Laboratoire d'informatique formelle\nUniversité du Québec à Chicoutimi, Canada");
+		System.out.println("(C) 2013-2019 Laboratoire d'informatique formelle\nUniversité du Québec à Chicoutimi, Canada");
 		System.out.println("This jar file is not meant to be run stand-alone");
 	}
 }
