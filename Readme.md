@@ -17,6 +17,18 @@ composed of two parts:
   specifically designed to operate on lossy, low-bandwidth and one-way
   communication channels.
 
+A main characteristic of BufferTannen is its ability to send messages in
+a very compact form. Consider the following JSON string:
+
+```json
+{"compact":true,"schema":0}
+```
+
+The [MessagePack](https://msgpack.org/) library encodes this string of
+of 27 bytes in only 18 bytes. As a comparison, BufferTannen can represent
+schema of this message in 121 *bits*, and any instance of this schema in
+as few as **2 bits**.
+
 Although BufferTannen is written in Java, its serialization mechanism and
 protocol could interoperate with implementations written in other languages
 (although none exists at the moment).
