@@ -1,6 +1,8 @@
 BufferTannen: a protocol for one-way communication channels
 ===========================================================
 
+**NOTE: this project is no longer under development. The compact serialization of data structures is now taken care of by the newer (and simpler) [Buffy](https://github.com/sylvainhalle/Azrael/tree/master/Source/Buffy) library.**
+
 BufferTannen is a Java software package that allows the serialization and
 transmission of structured data over limited communication channels. It is
 composed of two parts:
